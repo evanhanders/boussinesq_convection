@@ -38,7 +38,7 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
 
-    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 0]
+    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 50]
     --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
 
     --ae                       Do accelerated evolution
@@ -364,9 +364,9 @@ if rank == 0:
 
 
 if args['--ae']:
-    kwargs = { 'first_ae_wait_time' : 0,
-               'first_ae_avg_time' : 2,
-               'first_ae_avg_thresh' : 1e0 }
+    kwargs = { 'first_ae_wait_time' : 30,
+               'first_ae_avg_time' : 20,
+               'first_ae_avg_thresh' : 1e-2 }
     ae_solver = BoussinesqAESolver(nz, solver, domain.dist, ['tot_flux', 'enth_flux', 'momentum_rhs_z'], ['T1', 'p', 'delta_T1'], P, R,
                 **kwargs)
 
@@ -418,6 +418,7 @@ try:
 
                     avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
                     avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
+                last_time = solver.sim_time
         else:
             avg_nu = avg_temp = 0
 
