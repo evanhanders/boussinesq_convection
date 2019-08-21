@@ -1,8 +1,9 @@
 """
 Dedalus script for Rayleigh-Benard convection.
 
-This script uses a Fourier basis in the x direction with periodic boundary
-conditions.  The equations are scaled in units of the buoyancy time (Fr = 1).
+This script uses a Fourier basis in the horizontal direction(s) with periodic boundary
+conditions. The vertical direction is represented as Chebyshev coefficients.
+The equations are scaled in units of the buoyancy time (Fr = 1).
 
 Usage:
     rayleigh_benard.py [options] 
@@ -32,81 +33,38 @@ Options:
 
     --label=<label>            Optional additional case name label
     --verbose                  Do verbose output (e.g., sparsity patterns of arrays)
-    --output_dt=<num>          Simulation time between outputs [default: 0.2]
-    --no_coeffs                If flagged, coeffs will not be output   
-    --no_volumes               If flagged, volumes will not be output   
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
 
     --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 50]
-    --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
+    --stat_window=<t_w>        Time to take Nu, T averages over [default: 200]
 
     --ae                       Do accelerated evolution
 
 """
-import sys
 import logging
-logger = logging.getLogger(__name__)
-
-import numpy as np
-from mpi4py import MPI
+import os
+import sys
 import time
 
+import numpy as np
 from docopt import docopt
+from mpi4py import MPI
+
 from dedalus import public as de
 from dedalus.extras import flow_tools
 from dedalus.tools  import post
+from dedalus.tools.config import config
 
 from logic.output import initialize_output
 from logic.checkpointing import Checkpoint
 from logic.ae_tools import BoussinesqAESolver
+from logic.extras import global_noise
 
+logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
-checkpoint_min = 30
-RA_CRIT = 1295.78
-
-
-def filter_field(field, frac=0.25):
-    """
-    Filter a field in coefficient space by cutting off all coefficient above
-    a given threshold.  This is accomplished by changing the scale of a field,
-    forcing it into coefficient space at that small scale, then coming back to
-    the original scale.
-
-    Inputs:
-        field   - The dedalus field to filter
-        frac    - The fraction of coefficients to KEEP POWER IN.  If frac=0.25,
-                    The upper 75% of coefficients are set to 0.
-    """
-    dom = field.domain
-    logger.info("filtering field {} with frac={} using a set-scales approach".format(field.name,frac))
-    orig_scale = field.scales
-    field.set_scales(frac, keep_data=True)
-    field['c']
-    field['g']
-    field.set_scales(orig_scale, keep_data=True)
-
-
-def global_noise(domain, seed=42, **kwargs):
-    """
-    Create a field fielled with random noise of order 1.  Modify seed to
-    get varying noise, keep seed the same to directly compare runs.
-    """
-    # Random perturbations, initialized globally for same results in parallel
-    gshape = domain.dist.grid_layout.global_shape(scales=domain.dealias)
-    slices = domain.dist.grid_layout.slices(scales=domain.dealias)
-    rand = np.random.RandomState(seed=seed)
-    noise = rand.standard_normal(gshape)[slices]
-
-    # filter in k-space
-    noise_field = domain.new_field()
-    noise_field.set_scales(domain.dealias, keep_data=False)
-    noise_field['g'] = noise
-    filter_field(noise_field, **kwargs)
-    return noise_field
-
-
+### 1. Read in command-line args, set up data directory
 fixed_f = args['--fixed_f']
 fixed_t = args['--fixed_t']
 if not (fixed_f or fixed_t):
@@ -116,7 +74,6 @@ stress_free = args['--stress_free']
 if not stress_free:
     no_slip = True
 
-# save data in directory named after script
 data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
 
 threeD = args['--3D']
@@ -137,16 +94,17 @@ if stress_free:
 else:
     data_dir += '_noSlip'
 
-ra = float(args['--Rayleigh'])
-pr = float(args['--Prandtl'])
-aspect = float(args['--aspect'])
-
 data_dir += "_Ra{}_Pr{}_a{}".format(args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
     data_dir += "_{}".format(args['--label'])
 data_dir += '/'
+if MPI.COMM_WORLD.rank == 0:
+    if not os.path.exists('{:s}/'.format(data_dir)):
+        os.makedirs('{:s}/'.format(data_dir))
+    logdir = os.path.join(data_dir,'logs')
+    if not os.path.exists(logdir):
+        os.mkdir(logdir)
 logger.info("saving run in: {}".format(data_dir))
-
 
 
 run_time_buoy = args['--run_time_buoy']
@@ -162,50 +120,30 @@ if mesh is not None:
     mesh = mesh.split(',')
     mesh = [int(mesh[0]), int(mesh[1])]
 
-    
-import os
-from dedalus.tools.config import config
-
-config['logging']['filename'] = os.path.join(data_dir,'logs/dedalus_log')
-config['logging']['file_level'] = 'DEBUG'
-
-import mpi4py.MPI
-if mpi4py.MPI.COMM_WORLD.rank == 0:
-    if not os.path.exists('{:s}/'.format(data_dir)):
-        os.makedirs('{:s}/'.format(data_dir))
-    logdir = os.path.join(data_dir,'logs')
-    if not os.path.exists(logdir):
-        os.mkdir(logdir)
-logger = logging.getLogger(__name__)
-logger.info("saving run in: {}".format(data_dir))
-
-import time
-from dedalus import public as de
-from dedalus.extras import flow_tools
-from dedalus.tools  import post
-
-# input parameters
-logger.info("Ra = {}, Pr = {}".format(ra, pr))
 
 
-# Parameters
+
+### 2. Simulation parameters
+ra = float(args['--Rayleigh'])
+pr = float(args['--Prandtl'])
+aspect = float(args['--aspect'])
+P = (ra*pr)**(-1./2)
+R = (ra/pr)**(-1./2)
+
 nx = int(args['--nx'])
 ny = int(args['--ny'])
 nz = int(args['--nz'])
 
-P = (ra*pr)**(-1./2)
-R = (ra/pr)**(-1./2)
+logger.info("Ra = {:.3e}, Pr = {:2g}, resolution = {}x{}x{}".format(ra, pr, nx, ny, nz))
 
-
+### 3. Setup Dedalus domain, problem, and substitutions/parameters
 x_basis = de.Fourier( 'x', nx, interval = [-aspect/2, aspect/2], dealias=3/2)
 if threeD : x_basis = de.Fourier( 'y', ny, interval = [-aspect/2, aspect/2], dealias=3/2)
 z_basis = de.Chebyshev('z', nz, interval = [-1./2, 1./2], dealias=3/2)
 
 if threeD:  bases = [x_basis, y_basis, z_basis]
 else:       bases = [x_basis, z_basis]
-
 domain = de.Domain(bases, grid_dtype=np.float64, mesh=mesh)
-
 
 variables = ['T1', 'T1_z', 'p', 'u', 'v', 'w', 'Ox', 'Oy', 'Oz']
 if not threeD:
@@ -248,7 +186,7 @@ problem.substitutions['Re'] = '(vel_rms / R)'
 problem.substitutions['Pe'] = '(vel_rms / P)'
 
 
-
+### 4.Setup equations and Boundary Conditions
 problem.add_equation("dx(u) + dy(v) + dz(w) = 0")
 problem.add_equation("dt(T1) - P*Lap(T1, T1_z) + w*T0_z           = -UdotGrad(T1, T1_z)")
 problem.add_equation("dt(u)  + R*(dy(Oz) - dz(Oy))  + dx(p)       =  v*Oz - w*Oy ")
@@ -290,7 +228,6 @@ else:
         problem.add_bc("left(v) = 0")
         problem.add_bc("right(v) = 0")
 
-# vertical velocity boundary conditions
 logger.info("Vertical velocity BC: impenetrable")
 problem.add_bc( "left(w) = 0")
 if threeD:
@@ -300,15 +237,18 @@ else:
     problem.add_bc("right(p) = 0", condition="(nx == 0)")
     problem.add_bc("right(w) = 0", condition="(nx != 0)")
 
-# Build solver
+
+### 5. Build solver
+# Note: SBDF2 timestepper does not currently work with AE.
 ts = de.timesteppers.RK222
 cfl_safety = 0.5
-#cfl_safety = 0.8
-
 solver = problem.build_solver(ts)
 logger.info('Solver built')
 
+
+### 6. Set initial conditions: noise or loaded checkpoint
 checkpoint = Checkpoint(data_dir)
+checkpoint_min = 30
 restart = args['--restart']
 if isinstance(restart, type(None)):
     T1 = solver.state['T1']
@@ -323,33 +263,34 @@ if isinstance(restart, type(None)):
     mode = 'overwrite'
 else:
     logger.info("restarting from {}".format(restart))
-    checkpoint.restart(restart, solver)
+    dt = checkpoint.restart(restart, solver)
     if overwrite:
         mode = 'overwrite'
     else:
         mode = 'append'
 checkpoint.set_checkpoint(solver, wall_dt=checkpoint_min*60, mode=mode)
-    
-# Integration parameters
+   
+
+### 7. Set simulation stop parameters, output, and CFL
 if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy
 elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P
 else:                            solver.stop_sim_time = 1/P
 solver.stop_wall_time = run_time_wall*3600.
-Hermitian_cadence = 100
 
-# Analysis
 max_dt    = 0.1
+if dt is None: dt = max_dt
 analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD)
 
 # CFL
-CFL = flow_tools.CFL(solver, initial_dt=0.1, cadence=1, safety=cfl_safety,
+CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
                      max_change=1.5, min_change=0.5, max_dt=max_dt, threshold=0.1)
 if threeD:
     CFL.add_velocities(('u', 'v', 'w'))
 else:
     CFL.add_velocities(('u', 'w'))
 
-# Flow properties
+
+### 8. Setup flow tracking for terminal output, including rolling averages
 flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
 flow.add_property("Re", name='Re')
 flow.add_property("Nu", name='Nu')
@@ -363,22 +304,26 @@ if rank == 0:
     writes     = 0
 
 
+### 9. Initialize Accelerated Evolution, if appropriate
 if args['--ae']:
     kwargs = { 'first_ae_wait_time' : 30,
                'first_ae_avg_time' : 20,
                'first_ae_avg_thresh' : 1e-2 }
-    ae_solver = BoussinesqAESolver(nz, solver, domain.dist, ['tot_flux', 'enth_flux', 'momentum_rhs_z'], ['T1', 'p', 'delta_T1'], P, R,
-                **kwargs)
+    ae_solver = BoussinesqAESolver( nz, solver, domain.dist, 
+                                    ['tot_flux', 'enth_flux', 'momentum_rhs_z'], 
+                                    ['T1', 'p', 'delta_T1'], P, R,
+                                    **kwargs)
 
+Hermitian_cadence = 100
 first_step = True
 # Main loop
 try:
-    count = 0
+    count = Re_avg = 0
     logger.info('Starting loop')
-    Re_avg = 0
     not_corrected_times = True
     init_time = last_time = solver.sim_time
     start_iter = solver.iteration
+    start_time = time.time()
     while (solver.ok and np.isfinite(Re_avg)):
         dt = CFL.compute_dt()
         solver.step(dt) #, trim=True)
@@ -391,13 +336,15 @@ try:
                 field.require_grid_space()
         
         if Re_avg > 1:
+            # Run times specified at command line are for convection, not for pre-transient.
             if not_corrected_times:
                 if run_time_buoy is not None:
                     solver.stop_sim_time  = run_time_buoy + solver.sim_time
                 elif run_time_therm is not None:
                     solver.stop_sim_time = run_time_therm/P + solver.sim_time
                 not_corrected_times = False
-            
+
+            # Rolling average logic 
             if last_time == init_time:
                 last_time = solver.sim_time + float(args['--stat_wait_time'])
             if solver.sim_time - last_time >= 0.2:
@@ -425,7 +372,6 @@ try:
         if args['--ae']:
             ae_solver.loop_tasks()
                     
-
         if effective_iter % 10 == 0:
             Re_avg = flow.grid_average('Re')
             log_string =  'Iteration: {:5d}, '.format(solver.iteration)
@@ -434,32 +380,6 @@ try:
             log_string += 'Nu: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('Nu'), avg_nu)
             log_string += 'T: {:8.3e} (av: {:8.3e})'.format(flow.grid_average('T'), avg_temp)
             logger.info(log_string)
-
-       
-        if first_step:
-            if args['--verbose']:
-                import matplotlib
-                matplotlib.use('Agg')
-                import matplotlib.pyplot as plt
-                fig = plt.figure()
-                ax = fig.add_subplot(1,1,1)
-                ax.spy(solver.pencils[0].L, markersize=1, markeredgewidth=0.0)
-                fig.savefig(data_dir+"sparsity_pattern.png", dpi=1200)
-                
-                import scipy.sparse.linalg as sla
-                LU = sla.splu(solver.pencils[0].LHS.tocsc(), permc_spec='NATURAL')
-                fig = plt.figure()
-                ax = fig.add_subplot(1,2,1)
-                ax.spy(LU.L.A, markersize=1, markeredgewidth=0.0)
-                ax = fig.add_subplot(1,2,2)
-                ax.spy(LU.U.A, markersize=1, markeredgewidth=0.0)
-                fig.savefig(data_dir+"sparsity_pattern_LU.png", dpi=1200)
-                
-                logger.info("{} nonzero entries in LU".format(LU.nnz))
-                logger.info("{} nonzero entries in LHS".format(solver.pencils[0].LHS.tocsc().nnz))
-                logger.info("{} fill in factor".format(LU.nnz/solver.pencils[0].LHS.tocsc().nnz))
-            first_step=False
-            start_time = time.time()
 except:
     raise
     logger.error('Exception raised, triggering end of main loop.')
