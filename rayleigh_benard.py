@@ -301,9 +301,8 @@ else:
     problem.add_bc("right(w) = 0", condition="(nx != 0)")
 
 # Build solver
-ts = de.timesteppers.SBDF2  
-#ts = de.timesteppers.RK443
-cfl_safety = 0.3
+ts = de.timesteppers.RK222
+cfl_safety = 0.5
 #cfl_safety = 0.8
 
 solver = problem.build_solver(ts)
