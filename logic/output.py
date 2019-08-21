@@ -42,7 +42,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
     scalar.add_task("vol_avg(Nu)", name="Nu")
     scalar.add_task("vol_avg(Re)", name="Re")
     scalar.add_task("vol_avg(Pe)", name="Pe")
-    scalar.add_task("left(T0+T1) - right(T0+T1)", name="delta_T")
+    scalar.add_task("vol_avg(left(T0+T1) - right(T0+T1))", name="delta_T")
     analysis_tasks['scalar'] = scalar
 
     if threeD:
