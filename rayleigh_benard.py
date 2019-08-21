@@ -30,9 +30,6 @@ Options:
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
 
-    --max_writes=<max_writes>              Writes per file for files other than slices and coeffs [default: 20]
-    --max_slice_writes=<max_slice_writes>  Writes per file for slices and coeffs [default: 20]
-    
     --label=<label>            Optional additional case name label
     --verbose                  Do verbose output (e.g., sparsity patterns of arrays)
     --output_dt=<num>          Simulation time between outputs [default: 0.2]
@@ -41,7 +38,13 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
 
+    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 50]
+    --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
+
+    --ae                       Do accelerated evolution
+
 """
+import sys
 import logging
 logger = logging.getLogger(__name__)
 
@@ -49,24 +52,20 @@ import numpy as np
 from mpi4py import MPI
 import time
 
+from docopt import docopt
 from dedalus import public as de
 from dedalus.extras import flow_tools
 from dedalus.tools  import post
 
 from logic.output import initialize_output
 from logic.checkpointing import Checkpoint
+from logic.ae_tools import BoussinesqAESolver
+
+args = docopt(__doc__)
+
 checkpoint_min = 30
 RA_CRIT = 1295.78
 
-
-from docopt import docopt
-args = docopt(__doc__)
-import logging
-logger = logging.getLogger(__name__)
-
-from numpy import inf as np_inf
-
-import sys
 
 def filter_field(field, frac=0.25):
     """
@@ -239,7 +238,10 @@ problem.substitutions['enstrophy'] = '(Ox**2 + Oy**2 + Oz**2)'
 
 problem.substitutions['enth_flux'] = '(w*(T1+T0))'
 problem.substitutions['cond_flux'] = '(-P*(T1_z+T0_z))'
+problem.substitutions['tot_flux'] = '(cond_flux+enth_flux)'
+problem.substitutions['momentum_rhs_z'] = '(u*Oy - v*Ox)'
 problem.substitutions['Nu'] = '((enth_flux + cond_flux)/vol_avg(cond_flux))'
+problem.substitutions['delta_T1'] = '(left(T1)-right(T1))'
 problem.substitutions['vel_rms'] = 'sqrt(u**2 + v**2 + w**2)'
 
 problem.substitutions['Re'] = '(vel_rms / R)'
@@ -300,7 +302,9 @@ else:
 
 # Build solver
 ts = de.timesteppers.SBDF2  
+#ts = de.timesteppers.RK443
 cfl_safety = 0.3
+#cfl_safety = 0.8
 
 solver = problem.build_solver(ts)
 logger.info('Solver built')
@@ -349,14 +353,32 @@ else:
 # Flow properties
 flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
 flow.add_property("Re", name='Re')
+flow.add_property("Nu", name='Nu')
+flow.add_property("T0+T1", name='T')
+
+rank = domain.dist.comm_cart.rank
+if rank == 0:
+    nu_vals    = np.zeros(5*int(args['--stat_window']))
+    temp_vals  = np.zeros(5*int(args['--stat_window']))
+    dt_vals    = np.zeros(5*int(args['--stat_window']))
+    writes     = 0
+
+
+if args['--ae']:
+    kwargs = { 'first_ae_wait_time' : 30,
+               'first_ae_avg_time' : 20,
+               'first_ae_avg_thresh' : 1e-2 }
+    ae_solver = BoussinesqAESolver(nz, solver, domain.dist, ['tot_flux', 'enth_flux', 'momentum_rhs_z'], ['T1', 'p', 'delta_T1'], P, R,
+                **kwargs)
 
 first_step = True
 # Main loop
 try:
+    count = 0
     logger.info('Starting loop')
     Re_avg = 0
     not_corrected_times = True
-    init_time = solver.sim_time
+    init_time = last_time = solver.sim_time
     start_iter = solver.iteration
     while (solver.ok and np.isfinite(Re_avg)):
         dt = CFL.compute_dt()
@@ -368,20 +390,50 @@ try:
         if threeD and effective_iter % Hermitian_cadence == 0:
             for field in solver.state.fields:
                 field.require_grid_space()
-
-        Re_avg = flow.grid_average('Re')
-        log_string =  'Iteration: {:5d}, '.format(solver.iteration)
-        log_string += 'Time: {:8.3e} ({:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time*P,  dt)
-        log_string += 'Re: {:8.3e}/{:8.3e}'.format(Re_avg, flow.max('Re'))
-        logger.info(log_string)
-
-        if not_corrected_times and Re_avg > 1:
-            if run_time_buoy is not None:
-                solver.stop_sim_time  = run_time_buoy + solver.sim_time
-            elif run_time_therm is not None:
-                solver.stop_sim_time = run_time_therm/P + solver.sim_time
-            not_corrected_times = False
         
+        if Re_avg > 1:
+            if not_corrected_times:
+                if run_time_buoy is not None:
+                    solver.stop_sim_time  = run_time_buoy + solver.sim_time
+                elif run_time_therm is not None:
+                    solver.stop_sim_time = run_time_therm/P + solver.sim_time
+                not_corrected_times = False
+            
+            if last_time == init_time:
+                last_time = solver.sim_time + float(args['--stat_wait_time'])
+            if solver.sim_time - last_time >= 0.2:
+                if writes != dt_vals.shape[0]:
+                    dt_vals[writes] = solver.sim_time - last_time
+                    nu_vals[writes] = flow.grid_average('Nu')
+                    temp_vals[writes] = flow.grid_average('T')
+                    writes += 1
+                else:
+                    dt_vals[:-1] = dt_vals[1:]
+                    nu_vals[:-1] = nu_vals[1:]
+                    temp_vals[:-1] = temp_vals[1:]
+                    dt_vals[-1] = solver.sim_time - last_time
+                    nu_vals[-1] = flow.grid_average('Nu')
+                    temp_vals[-1] = flow.grid_average('T')
+
+                avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
+                avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
+        else:
+            avg_nu = avg_temp = 0
+
+        if args['--ae']:
+            ae_solver.loop_tasks()
+                    
+
+        if effective_iter % 10 == 0:
+            Re_avg = flow.grid_average('Re')
+            log_string =  'Iteration: {:5d}, '.format(solver.iteration)
+            log_string += 'Time: {:8.3e} ({:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time*P,  dt)
+            log_string += 'Re: {:8.3e}/{:8.3e}, '.format(Re_avg, flow.max('Re'))
+            log_string += 'Nu: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('Nu'), avg_nu)
+            log_string += 'T: {:8.3e} (av: {:8.3e})'.format(flow.grid_average('T'), avg_temp)
+            logger.info(log_string)
+
+       
         if first_step:
             if args['--verbose']:
                 import matplotlib
