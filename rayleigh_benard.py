@@ -38,7 +38,7 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
 
-    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 50]
+    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 0]
     --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
 
     --ae                       Do accelerated evolution
@@ -364,9 +364,9 @@ if rank == 0:
 
 
 if args['--ae']:
-    kwargs = { 'first_ae_wait_time' : 30,
-               'first_ae_avg_time' : 20,
-               'first_ae_avg_thresh' : 1e-2 }
+    kwargs = { 'first_ae_wait_time' : 0,
+               'first_ae_avg_time' : 2,
+               'first_ae_avg_thresh' : 1e0 }
     ae_solver = BoussinesqAESolver(nz, solver, domain.dist, ['tot_flux', 'enth_flux', 'momentum_rhs_z'], ['T1', 'p', 'delta_T1'], P, R,
                 **kwargs)
 
@@ -401,21 +401,23 @@ try:
             if last_time == init_time:
                 last_time = solver.sim_time + float(args['--stat_wait_time'])
             if solver.sim_time - last_time >= 0.2:
-                if writes != dt_vals.shape[0]:
-                    dt_vals[writes] = solver.sim_time - last_time
-                    nu_vals[writes] = flow.grid_average('Nu')
-                    temp_vals[writes] = flow.grid_average('T')
-                    writes += 1
-                else:
-                    dt_vals[:-1] = dt_vals[1:]
-                    nu_vals[:-1] = nu_vals[1:]
-                    temp_vals[:-1] = temp_vals[1:]
-                    dt_vals[-1] = solver.sim_time - last_time
-                    nu_vals[-1] = flow.grid_average('Nu')
-                    temp_vals[-1] = flow.grid_average('T')
+                avg_Nu, avg_T = flow.grid_average('Nu'), flow.grid_average('T')
+                if domain.dist.comm_cart.rank == 0:
+                    if writes != dt_vals.shape[0]:
+                        dt_vals[writes] = solver.sim_time - last_time
+                        nu_vals[writes] = avg_Nu
+                        temp_vals[writes] = avg_T
+                        writes += 1
+                    else:
+                        dt_vals[:-1] = dt_vals[1:]
+                        nu_vals[:-1] = nu_vals[1:]
+                        temp_vals[:-1] = temp_vals[1:]
+                        dt_vals[-1] = solver.sim_time - last_time
+                        nu_vals[-1] = avg_Nu
+                        temp_vals[-1] = avg_T
 
-                avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
-                avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
+                    avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
+                    avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
         else:
             avg_nu = avg_temp = 0
 

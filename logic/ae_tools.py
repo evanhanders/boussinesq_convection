@@ -44,7 +44,7 @@ class BoussinesqAESolver:
         self.doing_ae, self.finished_ae, self.Pe_switch = False, False, False
         self.P, self.R = P, R
         self.AE_basis = de.Chebyshev('z', self.nz, interval=[-1./2, 1./2], dealias=3./2)
-        self.AE_domain = de.Domain([self.AE_basis,], grid_dtype=np.float64)
+        self.AE_domain = de.Domain([self.AE_basis,], grid_dtype=np.float64, comm=MPI.COMM_SELF)
 
         #Specify how BVPs work
         self.first_ae_wait_time  = self.sim_time_start =  first_ae_wait_time
@@ -163,7 +163,7 @@ class BoussinesqAESolver:
         loc, glob = [np.zeros(self.nz) for i in range(2)]
         if len(self.dist_IVP.mesh) == 0:
             loc[self.z_slices] = profile 
-        elif self.rank < self.dist_IVP.mesh[-1]:
+        elif self.dist_IVP.comm_cart.rank < self.dist_IVP.mesh[-1]:
             loc[self.z_slices] = profile
         self.dist_IVP.comm_cart.Allreduce(loc, glob, op=MPI.SUM)
         return glob
@@ -180,7 +180,7 @@ class BoussinesqAESolver:
         loc, glob = [np.zeros(1) for i in range(2)]
         if len(self.dist_IVP.mesh) == 0:
             loc[0] = np.max(profile)
-        elif self.rank < self.dist_IVP.mesh[-1]:
+        elif self.dist_IVP.comm_cart.rank < self.dist_IVP.mesh[-1]:
             loc[0] = np.max(profile)
         self.dist_IVP.comm_cart.Allreduce(loc, glob, op=MPI.MAX)
         return glob[0]
