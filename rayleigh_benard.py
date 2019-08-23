@@ -202,12 +202,10 @@ if args['--fixed_f']:
     logger.info("Thermal BC: fixed flux (full form)")
     problem.add_bc( "left(T1_z) = 0")
     problem.add_bc("right(T1_z) = 0")
-    dirichlet_set.append('T1_z')
 elif args['--fixed_t']:
     logger.info("Thermal BC: fixed temperature (T1)")
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
-    dirichlet_set.append('T1')
 else:
     logger.info("Thermal BC: fixed flux/fixed temperature")
     problem.add_bc("left(T1_z) = 0")
