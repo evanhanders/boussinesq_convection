@@ -156,7 +156,7 @@ problem.parameters['P'] = P
 problem.parameters['R'] = R
 problem.parameters['Lx'] = problem.parameters['Ly'] = aspect
 problem.parameters['Lz'] = 1
-problem.substitutions['T0']   = '-z'
+problem.substitutions['T0']   = '(-z + 0.5)'
 problem.substitutions['T0_z'] = '-1'
 problem.substitutions['Lap(A, A_z)']=       '(dx(dx(A)) + dy(dy(A)) + dz(A_z))'
 problem.substitutions['UdotGrad(A, A_z)'] = '(u*dx(A) + v*dy(A) + w*A_z)'

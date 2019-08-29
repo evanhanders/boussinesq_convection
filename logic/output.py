@@ -19,7 +19,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
     # Analysis
     analysis_tasks = OrderedDict()
-    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt*10, max_writes=max_writes, mode=mode)
+    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=max_writes*10, mode=mode)
     profiles.add_task("plane_avg(T1+T0)", name="T")
     profiles.add_task("plane_avg(dz(T1+T0))", name="Tz")
     profiles.add_task("plane_avg(T1)", name="T1")
@@ -35,7 +35,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
     analysis_tasks['profiles'] = profiles
 
-    scalar = solver.evaluator.add_file_handler(data_dir+'scalar', sim_dt=output_dt*100, max_writes=max_writes, mode=mode)
+    scalar = solver.evaluator.add_file_handler(data_dir+'scalar', sim_dt=output_dt, max_writes=max_writes*100, mode=mode)
     scalar.add_task("vol_avg(T1)", name="IE")
     scalar.add_task("vol_avg(0.5*vel_rms**2)", name="KE")
     scalar.add_task("vol_avg(T1) + vol_avg(0.5*vel_rms**2)", name="TE")
@@ -82,7 +82,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
         slices.add_task("enstrophy")
         analysis_tasks['slices'] = slices
 
-        powers = solver.evaluator.add_file_handler(data_dir+'powers', sim_dt=slice_output_dt*10, max_writes=max_writes, mode=mode)
+        powers = solver.evaluator.add_file_handler(data_dir+'powers', sim_dt=slice_output_dt, max_writes=max_writes*10, mode=mode)
         powers.add_task("interp(T1,         z={})".format(Lz/2),    name='T midplane', layout='c')
         powers.add_task("interp(T1,         z={})".format(0.05*Lz), name='T near bot', layout='c')
         powers.add_task("interp(T1,         z={})".format(0.95*Lz), name='T near top', layout='c')
