@@ -262,10 +262,7 @@ if isinstance(restart, type(None)):
 else:
     logger.info("restarting from {}".format(restart))
     dt = checkpoint.restart(restart, solver)
-    if overwrite:
-        mode = 'overwrite'
-    else:
-        mode = 'append'
+    mode = 'append'
 checkpoint.set_checkpoint(solver, wall_dt=checkpoint_min*60, mode=mode)
    
 

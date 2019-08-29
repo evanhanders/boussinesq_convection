@@ -19,7 +19,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
     # Analysis
     analysis_tasks = OrderedDict()
-    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=max_writes, mode=mode)
+    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt*10, max_writes=max_writes, mode=mode)
     profiles.add_task("plane_avg(T1+T0)", name="T")
     profiles.add_task("plane_avg(dz(T1+T0))", name="Tz")
     profiles.add_task("plane_avg(T1)", name="T1")
@@ -35,7 +35,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
     analysis_tasks['profiles'] = profiles
 
-    scalar = solver.evaluator.add_file_handler(data_dir+'scalar', sim_dt=output_dt, max_writes=max_writes, mode=mode)
+    scalar = solver.evaluator.add_file_handler(data_dir+'scalar', sim_dt=output_dt*100, max_writes=max_writes, mode=mode)
     scalar.add_task("vol_avg(T1)", name="IE")
     scalar.add_task("vol_avg(0.5*vel_rms**2)", name="KE")
     scalar.add_task("vol_avg(T1) + vol_avg(0.5*vel_rms**2)", name="TE")
@@ -76,26 +76,26 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
         # Analysis
         slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=slice_output_dt, max_writes=max_writes, mode=mode)
         slices.add_task("T1 + T0", name='T')
-        slices.add_task("enstrophy")
-        slices.add_task("vel_rms")
         slices.add_task("u")
         slices.add_task("w")
+        slices.add_task("enth_flux")
+        slices.add_task("enstrophy")
         analysis_tasks['slices'] = slices
 
-    powers = solver.evaluator.add_file_handler(data_dir+'powers', sim_dt=slice_output_dt, max_writes=max_writes, mode=mode)
-    powers.add_task("interp(T1,         z={})".format(Lz/2),    name='T midplane', layout='c')
-    powers.add_task("interp(T1,         z={})".format(0.05*Lz), name='T near bot', layout='c')
-    powers.add_task("interp(T1,         z={})".format(0.95*Lz), name='T near top', layout='c')
-    powers.add_task("interp(u,         z={})".format(Lz/2),    name='u midplane' , layout='c')
-    powers.add_task("interp(u,         z={})".format(0.05*Lz), name='u near bot' , layout='c')
-    powers.add_task("interp(u,         z={})".format(0.95*Lz), name='u near top' , layout='c')
-    powers.add_task("interp(w,         z={})".format(Lz/2),    name='w midplane' , layout='c')
-    powers.add_task("interp(w,         z={})".format(0.05*Lz), name='w near bot' , layout='c')
-    powers.add_task("interp(w,         z={})".format(0.95*Lz), name='w near top' , layout='c')
-    for i in range(10):
-        fraction = 0.1*i
-        powers.add_task("interp(T1,     x={})".format(fraction*Lx), name='T at x=0.{}Lx'.format(i), layout='c')
-    analysis_tasks['powers'] = powers
+        powers = solver.evaluator.add_file_handler(data_dir+'powers', sim_dt=slice_output_dt*10, max_writes=max_writes, mode=mode)
+        powers.add_task("interp(T1,         z={})".format(Lz/2),    name='T midplane', layout='c')
+        powers.add_task("interp(T1,         z={})".format(0.05*Lz), name='T near bot', layout='c')
+        powers.add_task("interp(T1,         z={})".format(0.95*Lz), name='T near top', layout='c')
+        powers.add_task("interp(u,         z={})".format(Lz/2),    name='u midplane' , layout='c')
+        powers.add_task("interp(u,         z={})".format(0.05*Lz), name='u near bot' , layout='c')
+        powers.add_task("interp(u,         z={})".format(0.95*Lz), name='u near top' , layout='c')
+        powers.add_task("interp(w,         z={})".format(Lz/2),    name='w midplane' , layout='c')
+        powers.add_task("interp(w,         z={})".format(0.05*Lz), name='w near bot' , layout='c')
+        powers.add_task("interp(w,         z={})".format(0.95*Lz), name='w near top' , layout='c')
+        for i in range(10):
+            fraction = 0.1*i
+            powers.add_task("interp(T1,     x={})".format(fraction*Lx), name='T at x=0.{}Lx'.format(i), layout='c')
+        analysis_tasks['powers'] = powers
 
     return analysis_tasks
 
