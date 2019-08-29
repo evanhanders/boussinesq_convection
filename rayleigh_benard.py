@@ -18,6 +18,7 @@ Options:
 
     --fixed_f                  Fixed flux boundary conditions top/bottom
     --fixed_t                  Fixed temperature boundary conditions top/bottom
+    --forced_t                 Fixed temperature boundary conditions used to achieve evolved fixedF state
     --stress_free              Stress free boundary conditions top/bottom
 
     --3D                       Run in 3D
@@ -36,8 +37,8 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
 
-    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 50]
-    --stat_window=<t_w>        Time to take Nu, T averages over [default: 200]
+    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 20]
+    --stat_window=<t_w>        Time to take Nu, T averages over [default: 50]
 
     --ae                       Do accelerated evolution
 
@@ -67,6 +68,7 @@ args = docopt(__doc__)
 ### 1. Read in command-line args, set up data directory
 fixed_f = args['--fixed_f']
 fixed_t = args['--fixed_t']
+forced_t = args['--forced_t']
 if not (fixed_f or fixed_t):
     mixed_BCs = True
 
@@ -86,6 +88,8 @@ if fixed_f:
     data_dir += '_fixedF'
 elif fixed_t:
     data_dir += '_fixedT'
+elif forced_t:
+    data_dir += '_forcedT'
 else:
     data_dir += '_mixedFT'
 
@@ -152,6 +156,31 @@ if not threeD:
     variables.remove('Oz')
 problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
+def top_temp():
+    if GLOBAL_NU is None:
+        delta_T = 1
+    else:
+        tmp = (GLOBAL_NU-1)**-1
+        delta_T = tmp/(1 + tmp)
+    return 0.5 - delta_T/2
+
+def bot_temp():
+    if GLOBAL_NU is None:
+        delta_T = 1
+    else:
+        tmp = (GLOBAL_NU-1)**-1
+        delta_T = tmp/(1 + tmp)
+    return -0.5 + delta_T/2
+
+def bot_temp_forcing(*args, domain=domain, F=bot_temp):
+    return de.operators.GeneralFunction(domain, layout='g', func=F, args=args)
+
+def top_temp_forcing(*args, domain=domain, F=top_temp):
+    return de.operators.GeneralFunction(domain, layout='g', func=F, args=args)
+        
+de.operators.parseables['top_temp_forcing'] = top_temp_forcing
+de.operators.parseables['bot_temp_forcing'] = bot_temp_forcing
+
 problem.parameters['P'] = P
 problem.parameters['R'] = R
 problem.parameters['Lx'] = problem.parameters['Ly'] = aspect
@@ -206,6 +235,10 @@ elif args['--fixed_t']:
     logger.info("Thermal BC: fixed temperature (T1)")
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
+elif args['--forced_t']:
+    logger.info("Thermal BC: forced flux temperature")
+    problem.add_bc( "left(T1) = bot_temp_forcing()")
+    problem.add_bc("right(T1) = top_temp_forcing()")
 else:
     logger.info("Thermal BC: fixed flux/fixed temperature")
     problem.add_bc("left(T1_z) = 0")
