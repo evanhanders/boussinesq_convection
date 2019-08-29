@@ -160,19 +160,19 @@ problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
 def top_temp():
     if GLOBAL_NU is None:
-        delta_T = 1
+        return 0
     else:
-        tmp = (GLOBAL_NU-1)**-1
-        delta_T = tmp/(1 + tmp)
-    return 0.5 - delta_T/2
+        delta_T = 1/GLOBAL_NU
+    top_temp = 0.5 - delta_T/2
+    return top_temp
 
 def bot_temp():
     if GLOBAL_NU is None:
-        delta_T = 1
+        return 0
     else:
-        tmp = (GLOBAL_NU-1)**-1
-        delta_T = tmp/(1 + tmp)
-    return -0.5 + delta_T/2
+        delta_T = 1/GLOBAL_NU
+    bot_temp = -0.5 + delta_T/2
+    return bot_temp
 
 def bot_temp_forcing(*args, domain=domain, F=bot_temp):
     return de.operators.GeneralFunction(domain, layout='g', func=F, args=args)
@@ -324,11 +324,13 @@ else:
 flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
 flow.add_property("Re", name='Re')
 flow.add_property("Nu", name='Nu')
+flow.add_property("-1 + (left(T1_z) + right(T1_z) ) / 2", name='Tz_excess')
 flow.add_property("T0+T1", name='T')
 
 rank = domain.dist.comm_cart.rank
 if rank == 0:
     nu_vals    = np.zeros(5*int(args['--stat_window']))
+    Tz_excess  = np.zeros(5*int(args['--stat_window']))
     temp_vals  = np.zeros(5*int(args['--stat_window']))
     dt_vals    = np.zeros(5*int(args['--stat_window']))
     writes     = 0
@@ -354,7 +356,7 @@ try:
     init_time = last_time = solver.sim_time
     start_iter = solver.iteration
     start_time = time.time()
-    avg_nu = avg_temp = 0
+    avg_nu = avg_temp = avg_tz = 0
     while (solver.ok and np.isfinite(Re_avg)):
         dt = CFL.compute_dt()
         solver.step(dt) #, trim=True)
@@ -379,29 +381,30 @@ try:
             if last_time == init_time:
                 last_time = solver.sim_time + float(args['--stat_wait_time'])
             if solver.sim_time - last_time >= 0.2:
-                avg_Nu, avg_T = flow.grid_average('Nu'), flow.grid_average('T')
+                avg_Nu, avg_T, Tz = flow.grid_average('Nu'), flow.grid_average('T'), flow.grid_average('Tz_excess')
                 if domain.dist.comm_cart.rank == 0:
                     if writes != dt_vals.shape[0]:
                         dt_vals[writes] = solver.sim_time - last_time
                         nu_vals[writes] = avg_Nu
                         temp_vals[writes] = avg_T
+                        Tz_excess[writes] = Tz
                         writes += 1
                     else:
                         dt_vals[:-1] = dt_vals[1:]
                         nu_vals[:-1] = nu_vals[1:]
                         temp_vals[:-1] = temp_vals[1:]
+                        Tz_excess[:-1] = Tz_excess[1:]
                         dt_vals[-1] = solver.sim_time - last_time
                         nu_vals[-1] = avg_Nu
                         temp_vals[-1] = avg_T
+                        Tz_excess[-1] = Tz
 
                     if np.sum(dt_vals) > 10:
-                        avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
+                        GLOBAL_NU = avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
+                        avg_tz   = np.sum((dt_vals*Tz_excess)[:writes])/np.sum(dt_vals[:writes])
                         avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
                 last_time = solver.sim_time
-
-        avg_nu = domain.dist.comm_cart.bcast(avg_nu, root=0)
-        if avg_nu != 0:
-            GLOBAL_NU = avg_nu
+                GLOBAL_NU = domain.dist.comm_cart.bcast(GLOBAL_NU, root=0)
 
         if args['--ae']:
             ae_solver.loop_tasks()
@@ -412,7 +415,8 @@ try:
             log_string += 'Time: {:8.3e} ({:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time*P,  dt)
             log_string += 'Re: {:8.3e}/{:8.3e}, '.format(Re_avg, flow.max('Re'))
             log_string += 'Nu: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('Nu'), avg_nu)
-            log_string += 'T: {:8.3e} (av: {:8.3e})'.format(flow.grid_average('T'), avg_temp)
+            log_string += 'T: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('T'), avg_temp)
+            log_string += 'Tz: {:8.3e} (av: {:8.3e})'.format(flow.grid_average('Tz_excess'), avg_tz)
             logger.info(log_string)
 except:
     raise
