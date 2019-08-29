@@ -62,6 +62,8 @@ from logic.checkpointing import Checkpoint
 from logic.ae_tools import BoussinesqAESolver
 from logic.extras import global_noise
 
+GLOBAL_NU = None
+
 logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
@@ -237,8 +239,8 @@ elif args['--fixed_t']:
     problem.add_bc("right(T1) = 0")
 elif args['--forced_t']:
     logger.info("Thermal BC: forced flux temperature")
-    problem.add_bc( "left(T1) = bot_temp_forcing()")
-    problem.add_bc("right(T1) = top_temp_forcing()")
+    problem.add_bc( "left(T1) =  left(bot_temp_forcing())")
+    problem.add_bc("right(T1) = right(top_temp_forcing())")
 else:
     logger.info("Thermal BC: fixed flux/fixed temperature")
     problem.add_bc("left(T1_z) = 0")
@@ -352,6 +354,7 @@ try:
     init_time = last_time = solver.sim_time
     start_iter = solver.iteration
     start_time = time.time()
+    avg_nu = avg_temp = 0
     while (solver.ok and np.isfinite(Re_avg)):
         dt = CFL.compute_dt()
         solver.step(dt) #, trim=True)
@@ -391,11 +394,14 @@ try:
                         nu_vals[-1] = avg_Nu
                         temp_vals[-1] = avg_T
 
-                    avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
-                    avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
+                    if np.sum(dt_vals) > 10:
+                        avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
+                        avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
                 last_time = solver.sim_time
-        else:
-            avg_nu = avg_temp = 0
+
+        avg_nu = domain.dist.comm_cart.bcast(avg_nu, root=0)
+        if avg_nu != 0:
+            GLOBAL_NU = avg_nu
 
         if args['--ae']:
             ae_solver.loop_tasks()
