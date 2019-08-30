@@ -29,6 +29,7 @@ Options:
     --run_time_therm=<time_>   Run time, in thermal times [default: 1]
 
     --restart=<restart_file>   Restart from checkpoint
+    --restart_T2m=<restart_file>   Restart from checkpoint, going from forced to mixed BCs
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
 
@@ -38,7 +39,7 @@ Options:
     --root_dir=<dir>           Root directory for output [default: ./]
 
     --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 20]
-    --stat_window=<t_w>        Time to take Nu, T averages over [default: 50]
+    --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
 
     --ae                       Do accelerated evolution
 
@@ -283,7 +284,8 @@ logger.info('Solver built')
 checkpoint = Checkpoint(data_dir)
 checkpoint_min = 30
 restart = args['--restart']
-if isinstance(restart, type(None)):
+restart_T2m = args['--restart_T2m']
+if restart is None and restart_T2m is None:
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
     T1.set_scales(domain.dealias)
@@ -294,6 +296,13 @@ if isinstance(restart, type(None)):
 
     dt = None
     mode = 'overwrite'
+elif restart_T2m is not None:
+    logger.info("restarting from {} and swapping BCs".format(restart_T2m))
+    dt = checkpoint.restart(restart_T2m, solver)
+    mode = 'overwrite'
+    T1 = solver.state['T1']
+    T_off = np.mean(T1.interpolate(z=1/2)['g'])
+    T1['g'] -= T_off
 else:
     logger.info("restarting from {}".format(restart))
     dt = checkpoint.restart(restart, solver)
@@ -309,7 +318,7 @@ solver.stop_wall_time = run_time_wall*3600.
 
 max_dt    = 0.1
 if dt is None: dt = max_dt
-analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD)
+analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, mode=mode)
 
 # CFL
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
@@ -357,7 +366,19 @@ try:
     start_iter = solver.iteration
     start_time = time.time()
     avg_nu = avg_temp = avg_tz = 0
-    while (solver.ok and np.isfinite(Re_avg)):
+    while (solver.ok and np.isfinite(Re_avg)) or first_step:
+        if first_step: first_step = False
+        if Re_avg > 1:
+            # Run times specified at command line are for convection, not for pre-transient.
+            if not_corrected_times:
+                if run_time_buoy is not None:
+                    solver.stop_sim_time  = run_time_buoy + solver.sim_time
+                elif run_time_therm is not None:
+                    solver.stop_sim_time = run_time_therm/P + solver.sim_time
+                not_corrected_times = False
+
+
+
         dt = CFL.compute_dt()
         solver.step(dt) #, trim=True)
 
@@ -369,14 +390,6 @@ try:
                 field.require_grid_space()
         
         if Re_avg > 1:
-            # Run times specified at command line are for convection, not for pre-transient.
-            if not_corrected_times:
-                if run_time_buoy is not None:
-                    solver.stop_sim_time  = run_time_buoy + solver.sim_time
-                elif run_time_therm is not None:
-                    solver.stop_sim_time = run_time_therm/P + solver.sim_time
-                not_corrected_times = False
-
             # Rolling average logic 
             if last_time == init_time:
                 last_time = solver.sim_time + float(args['--stat_wait_time'])
@@ -441,7 +454,7 @@ finally:
     finally:
         if not args['--no_join']:
             logger.info('beginning join operation')
-            post.merge_analysis(data_dir+'checkpoints')
+            post.merge_analysis(data_dir+'checkpoint')
 
             for key, task in analysis_tasks.items():
                 logger.info(task.base_path)
