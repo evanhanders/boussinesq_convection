@@ -23,7 +23,7 @@ start_file = int(args['--start_file'])
 n_files     = args['--n_files']
 if n_files is not None: n_files = int(n_files)
 
-pdfs_to_plot = ['T', 'enstrophy', 'vel_rms', 'w']
+pdfs_to_plot = ['T', 'enstrophy', 'enth_flux', 'w']
 
 
 # Load in figures and make plots

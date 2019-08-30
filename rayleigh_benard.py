@@ -96,6 +96,9 @@ elif forced_t:
 else:
     data_dir += '_mixedFT'
 
+if args['--restart_T2m'] is not None:
+    data_dir += '_restartedT2m'
+
 if stress_free:
     data_dir += '_stressFree'
 else:
@@ -145,7 +148,7 @@ logger.info("Ra = {:.3e}, Pr = {:2g}, resolution = {}x{}x{}".format(ra, pr, nx, 
 
 ### 3. Setup Dedalus domain, problem, and substitutions/parameters
 x_basis = de.Fourier( 'x', nx, interval = [-aspect/2, aspect/2], dealias=3/2)
-if threeD : x_basis = de.Fourier( 'y', ny, interval = [-aspect/2, aspect/2], dealias=3/2)
+if threeD : y_basis = de.Fourier( 'y', ny, interval = [-aspect/2, aspect/2], dealias=3/2)
 z_basis = de.Chebyshev('z', nz, interval = [-1./2, 1./2], dealias=3/2)
 
 if threeD:  bases = [x_basis, y_basis, z_basis]

@@ -64,13 +64,13 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
         analysis_tasks['slices'] = slices
 
         analysis_tasks['profiles'].add_task('plane_avg(Oz)', name="z_vorticity")
-        analysis_tasks['scalar'].add_task('vol_avg(Rossby)', name='Ro')
+        analysis_tasks['profiles'].add_task('plane_avg(Ox)', name="x_vorticity")
+        analysis_tasks['profiles'].add_task('plane_avg(Oy)', name="y_vorticity")
+        analysis_tasks['profiles'].add_task('plane_avg(v)', name="v")
 
         if volumes:
             analysis_volume = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=vol_output_dt, max_writes=max_writes, mode=mode)
             analysis_volume.add_task("T1 + T0", name="T")
-            analysis_volume.add_task("enstrophy", name="enstrophy")
-            analysis_volume.add_task("Oz", name="z_vorticity")
             analysis_tasks['volumes'] = analysis_volume
     else:
         # Analysis
