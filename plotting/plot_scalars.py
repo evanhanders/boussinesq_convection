@@ -54,9 +54,22 @@ fig6 = ScalarFigure(2, 1, col_in=6, row_in=2.5, fig_name='boundary_fluxes')
 fig6.add_field(0, 'left_flux')
 fig6.add_field(1, 'right_flux')
 
+# KE sources
+fig7 = ScalarFigure(3, 1, col_in=6, row_in=2.5, fig_name='ke_sources')
+fig7.add_field(0, 'KE')
+fig7.add_field(1, 'enstrophy')
+fig7.add_field(2, 'wT')
+
+# KE sources
+fig8 = ScalarFigure(3, 1, col_in=6, row_in=2.5, fig_name='ke_sources2')
+fig8.add_field(0, 'KE')
+fig8.add_field(1, 'visc_KE_source')
+fig8.add_field(2, 'buoy_KE_source')
+
+
 
 # Load in figures and make plots
 plotter = ScalarPlotter(root_dir, file_dir='scalar', fig_name=fig_name, start_file=start_file, n_files=n_files)
-plotter.load_figures([fig1, fig2, fig3, fig4, fig5, fig6])
+plotter.load_figures([fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8])
 plotter.plot_figures(dpi=int(args['--dpi']))
 plotter.plot_convergence_figures(dpi=int(args['--dpi']))

@@ -37,11 +37,13 @@ Options:
     --verbose                  Do verbose output (e.g., sparsity patterns of arrays)
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
+    --safety=<s>               CFL safety factor [default: 0.5]
 
     --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 20]
     --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
 
     --ae                       Do accelerated evolution
+    --use_theory               If using forced_t BCs, use theoretical Nu scaling to get a better value of dT quickly
 
 """
 import logging
@@ -96,6 +98,9 @@ elif forced_t:
 else:
     data_dir += '_mixedFT'
 
+if args['--ae']:
+    data_dir += '_AE'
+
 if args['--restart_T2m'] is not None:
     data_dir += '_restartedT2m'
 
@@ -105,6 +110,7 @@ else:
     data_dir += '_noSlip'
 
 data_dir += "_Ra{}_Pr{}_a{}".format(args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
+if args['--use_theory']: data_dir += '_theory'
 if args['--label'] is not None:
     data_dir += "_{}".format(args['--label'])
 data_dir += '/'
@@ -162,12 +168,14 @@ if not threeD:
     variables.remove('Oz')
 problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
+DELTA_T_INIT = 1
+
 def top_temp():
     if GLOBAL_NU is None:
         return 0
     else:
         delta_T = 1/GLOBAL_NU
-    top_temp = 0.5 - delta_T/2
+    top_temp = DELTA_T_INIT/2 - delta_T/2
     return top_temp
 
 def bot_temp():
@@ -175,7 +183,7 @@ def bot_temp():
         return 0
     else:
         delta_T = 1/GLOBAL_NU
-    bot_temp = -0.5 + delta_T/2
+    bot_temp = -DELTA_T_INIT/2 + delta_T/2
     return bot_temp
 
 def bot_temp_forcing(*args, domain=domain, F=bot_temp):
@@ -191,8 +199,16 @@ problem.parameters['P'] = P
 problem.parameters['R'] = R
 problem.parameters['Lx'] = problem.parameters['Ly'] = aspect
 problem.parameters['Lz'] = 1
-problem.substitutions['T0']   = '(-z + 0.5)'
-problem.substitutions['T0_z'] = '-1'
+
+if args['--use_theory']:
+    Ra_crit = 657.511 #TODO: generalize to no-slip BCs
+#    nu = 1.7*(ra/Ra_crit)**(1./4)
+    DELTA_T_INIT = 0.5 #1/nu
+#    if nu > 2: DELTA_T_INIT *= 2
+logger.info('delta T init: {:.4g}'.format(DELTA_T_INIT))
+
+problem.substitutions['T0']   = '(-{}*z + 0.5)'.format(DELTA_T_INIT)
+problem.substitutions['T0_z'] = '-{}'.format(DELTA_T_INIT)
 problem.substitutions['Lap(A, A_z)']=       '(dx(dx(A)) + dy(dy(A)) + dz(A_z))'
 problem.substitutions['UdotGrad(A, A_z)'] = '(u*dx(A) + v*dy(A) + w*A_z)'
 
@@ -278,7 +294,7 @@ else:
 ### 5. Build solver
 # Note: SBDF2 timestepper does not currently work with AE.
 ts = de.timesteppers.RK222
-cfl_safety = 0.5
+cfl_safety = float(args['--safety'])
 solver = problem.build_solver(ts)
 logger.info('Solver built')
 
@@ -319,7 +335,7 @@ elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P
 else:                            solver.stop_sim_time = 1/P
 solver.stop_wall_time = run_time_wall*3600.
 
-max_dt    = 0.1
+max_dt    = 0.1/np.sqrt(DELTA_T_INIT)
 if dt is None: dt = max_dt
 analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, mode=mode)
 
@@ -335,8 +351,9 @@ else:
 ### 8. Setup flow tracking for terminal output, including rolling averages
 flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
 flow.add_property("Re", name='Re')
+flow.add_property("vel_rms**2/2", name='KE')
 flow.add_property("Nu", name='Nu')
-flow.add_property("-1 + (left(T1_z) + right(T1_z) ) / 2", name='Tz_excess')
+flow.add_property("-{} + (left(T1_z) + right(T1_z) ) / 2".format(DELTA_T_INIT), name='Tz_excess')
 flow.add_property("T0+T1", name='T')
 
 rank = domain.dist.comm_cart.rank
@@ -379,6 +396,7 @@ try:
                 elif run_time_therm is not None:
                     solver.stop_sim_time = run_time_therm/P + solver.sim_time
                 not_corrected_times = False
+                
 
 
 
@@ -415,7 +433,10 @@ try:
                         temp_vals[-1] = avg_T
                         Tz_excess[-1] = Tz
 
-                    if np.sum(dt_vals) > 10:
+        
+                    if args['--use_theory']: wait_time = 10
+                    else: wait_time = 10
+                    if np.sum(dt_vals) > wait_time:
                         GLOBAL_NU = avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
                         avg_tz   = np.sum((dt_vals*Tz_excess)[:writes])/np.sum(dt_vals[:writes])
                         avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
@@ -430,6 +451,7 @@ try:
             log_string =  'Iteration: {:5d}, '.format(solver.iteration)
             log_string += 'Time: {:8.3e} ({:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time*P,  dt)
             log_string += 'Re: {:8.3e}/{:8.3e}, '.format(Re_avg, flow.max('Re'))
+            log_string += 'KE: {:8.3e}/{:8.3e}, '.format(flow.grid_average('KE'), flow.max('KE'))
             log_string += 'Nu: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('Nu'), avg_nu)
             log_string += 'T: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('T'), avg_temp)
             log_string += 'Tz: {:8.3e} (av: {:8.3e})'.format(flow.grid_average('Tz_excess'), avg_tz)
