@@ -52,13 +52,13 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
     if threeD:
         #Analysis
         slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=slice_output_dt, max_writes=max_writes, mode=mode)
-        slices.add_task("interp(T1 + T0,         y={})".format(Ly/2), name='T')
+        slices.add_task("interp(T1 + T0,         y={})".format(0), name='T')
         slices.add_task("interp(T1 + T0,         z={})".format(0.95*Lz), name='T near top')
         slices.add_task("interp(T1 + T0,         z={})".format(Lz/2), name='T midplane')
-        slices.add_task("interp(w,         y={})".format(Ly/2), name='w')
+        slices.add_task("interp(w,         y={})".format(0), name='w')
         slices.add_task("interp(w,         z={})".format(0.95*Lz), name='w near top')
         slices.add_task("interp(w,         z={})".format(Lz/2), name='w midplane')
-        slices.add_task("interp(enstrophy,         y={})".format(Ly/2),    name='enstrophy')
+        slices.add_task("interp(enstrophy,         y={})".format(0),    name='enstrophy')
         slices.add_task("interp(enstrophy,         z={})".format(0.95*Lz), name='enstrophy near top')
         slices.add_task("interp(enstrophy,         z={})".format(Lz/2),    name='enstrophy midplane')
         analysis_tasks['slices'] = slices
@@ -99,3 +99,16 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
     return analysis_tasks
 
+
+def initialize_rotating_output(*args, **kwargs):
+    analysis_tasks = initialize_output(*args, threeD=True, **kwargs)
+    analysis_tasks['scalar'].add_task("vol_avg(Ro)", name="Ro")
+    analysis_tasks['scalar'].add_task("vol_avg(true_Ro)", name="true_Ro")
+    analysis_tasks['scalar'].add_task("vol_avg(u)",  name="u")
+    analysis_tasks['scalar'].add_task("vol_avg(v)",  name="v")
+    analysis_tasks['scalar'].add_task("vol_avg(w)",  name="w")
+    analysis_tasks['scalar'].add_task("vol_avg(Ox)", name="Ox")
+    analysis_tasks['scalar'].add_task("vol_avg(Oy)", name="Oy")
+    analysis_tasks['scalar'].add_task("vol_avg(Oz)", name="Oz")
+
+    return analysis_tasks
