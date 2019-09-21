@@ -66,10 +66,19 @@ fig8.add_field(0, 'KE')
 fig8.add_field(1, 'visc_KE_source')
 fig8.add_field(2, 'buoy_KE_source')
 
+# Re vs. time
+if 'rotating' in root_dir:
+    figRo = ScalarFigure(1, 1, col_in=6, fig_name='ro_trace')
+    figRo.add_field(0, 'Ro')
+    figRo.add_field(0, 'true_Ro')
+
+
 
 
 # Load in figures and make plots
 plotter = ScalarPlotter(root_dir, file_dir='scalar', fig_name=fig_name, start_file=start_file, n_files=n_files)
-plotter.load_figures([fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8])
+figs = [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8]
+if 'rotating' in root_dir: figs.append(figRo)
+plotter.load_figures(figs)
 plotter.plot_figures(dpi=int(args['--dpi']))
 plotter.plot_convergence_figures(dpi=int(args['--dpi']))
