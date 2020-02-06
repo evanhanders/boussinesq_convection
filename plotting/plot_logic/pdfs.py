@@ -63,7 +63,7 @@ class PdfPlotter(SingleFiletypePlotter):
             self.pdf_stats[k] = (mean, stdev, skew, kurt)
 
     
-    def _get_interpolated_slices(self, pdf_list, bases=['x', 'z'], uneven_basis=None):
+    def _get_interpolated_slices(self, file_name, pdf_list, bases=['x', 'z'], uneven_basis=None):
         """
         For data on an uneven grid, interpolates that data on to an evenly spaced grid.
 
@@ -76,43 +76,65 @@ class PdfPlotter(SingleFiletypePlotter):
         uneven_basis : string, optional
             The basis on which the grid has uneven spacing.
         """
+        #Read data
+        bs, tsk, writenum, times = self.reader.read_file(file_name, bases=bases, tasks=pdf_list)
+
+        # Put data on an even grid
+        x, y = bs[bases[0]], bs[bases[1]]
+        if bases[0] == uneven_basis:
+            even_x = np.linspace(x.min(), x.max(), len(x))
+            even_y = y
+        elif bases[1] == uneven_basis:
+            even_x = x
+            even_y = np.linspace(y.min(), y.max(), len(y))
+        else:
+            even_x, even_y = x, y
+        eyy, exx = np.meshgrid(even_y, even_x)
+
+        file_data = OrderedDict()
+        for k in pdf_list: 
+            file_data[k] = np.zeros(tsk[k].shape)
+            for i in range(file_data[k].shape[0]):
+                if self.reader.comm.rank == 0:
+                    print('interpolating {} ({}/{})...'.format(k, i+1, file_data[k].shape[0]))
+                    stdout.flush()
+                interp = RegularGridInterpolator((x.flatten(), y.flatten()), tsk[k][i,:], method='linear')
+                file_data[k][i,:] = interp((exx, eyy))
+
+
+        return file_data
+
+    def _get_bounds(self, pdf_list):
+        """
+        Finds the global minimum and maximum value of histogram boundaries
+        """
+        
         with self.my_sync:
-            if self.idle: return
-            #Read data
-            tasks = []
+            if self.idle : return
+
+            bounds = OrderedDict()
+            for field in pdf_list:
+                bounds[field] = np.zeros(2)
+                bounds[field][:] = np.nan
+
             for i, f in enumerate(self.files):
                 if self.reader.comm.rank == 0:
-                    print('reading file {}/{}...'.format(i+1, len(self.files)))
+                    print('getting bounds from file {}/{}...'.format(i+1, len(self.files)))
                     stdout.flush()
-                bs, tsk, writenum, times = self.reader.read_file(f, bases=bases, tasks=pdf_list)
-                tasks.append(tsk)
-                if i == 0:
-                    total_shape = list(tsk[pdf_list[0]].shape)
-                else:
-                    total_shape[0] += tsk[pdf_list[0]].shape[0]
+                bs, tsk, writenum, times = self.reader.read_file(f, bases=[], tasks=pdf_list)
+                for field in pdf_list:
+                    if np.isnan(bounds[field][0]):
+                        bounds[field][0], bounds[field][1] = tsk[field].min(), tsk[field].max()
 
-            # Put data on an even grid
-            x, y = bs[bases[0]], bs[bases[1]]
-            if bases[0] == uneven_basis:
-                even_x = np.linspace(x.min(), x.max(), len(x))
-                even_y = y
-            elif bases[1] == uneven_basis:
-                even_x = x
-                even_y = np.linspace(y.min(), y.max(), len(y))
-            else:
-                even_x, even_y = x, y
-            eyy, exx = np.meshgrid(even_y, even_x)
+            for field in pdf_list:
+                buff     = np.zeros(1)
+                self.dist_comm.Allreduce(bounds[field][0], buff, op=MPI.MIN)
+                bounds[field][0] = buff
 
-            full_data = OrderedDict()
-            for k in pdf_list: full_data[k] = np.zeros(total_shape)
-            count = 0
-            for i in range(len(tasks)):
-                for j in range(tasks[i][pdf_list[0]].shape[0]):
-                    for k in pdf_list:
-                        interp = RegularGridInterpolator((x.flatten(), y.flatten()), tasks[i][k][j,:], method='linear')
-                        full_data[k][count,:] = interp((exx, eyy))
-                    count += 1
-            return full_data
+                self.dist_comm.Allreduce(bounds[field][1], buff, op=MPI.MAX)
+                bounds[field][1] = buff
+
+            return bounds
 
 
     def calculate_pdfs(self, pdf_list, bins=100, **kwargs):
@@ -127,36 +149,40 @@ class PdfPlotter(SingleFiletypePlotter):
             The number of bins the PDF should have
         **kwargs : additional keyword arguments for the self._get_interpolated_slices() function.
         """
+        bounds = self._get_bounds(pdf_list)
+
+        histograms = OrderedDict()
+        bin_edges  = OrderedDict()
+        for field in pdf_list:
+            histograms[field] = np.zeros(bins)
+            bin_edges[field] = np.zeros(bins+1)
+
         with self.my_sync:
             if self.idle : return
 
-            full_data = self._get_interpolated_slices(pdf_list, **kwargs)
+            for i, f in enumerate(self.files):
+                if self.reader.comm.rank == 0:
+                    print('reading file {}/{}...'.format(i+1, len(self.files)))
+                    stdout.flush()
+                file_data = self._get_interpolated_slices(f, pdf_list, **kwargs)
 
-            # Create histograms of data
-            bounds = OrderedDict()
-            minv, maxv = np.zeros(1), np.zeros(1)
-            buffmin, buffmax = np.zeros(1), np.zeros(1)
-            for k in pdf_list:
-                minv[0] = np.min(full_data[k])
-                maxv[0] = np.max(full_data[k])
-                self.dist_comm.Allreduce(minv, buffmin, op=MPI.MIN)
-                self.dist_comm.Allreduce(maxv, buffmax, op=MPI.MAX)
-                bounds[k] = (np.copy(buffmin[0]), np.copy(buffmax[0]))
-                buffmin *= 0
-                buffmax *= 0
+                # Create histograms of data
+                for field in pdf_list:
+                    hist, bin_vals = np.histogram(file_data[field], bins=bins, range=bounds[field])
+                    histograms[field] += hist
+                    bin_edges[field] = bin_vals
 
-                loc_hist, bin_edges = np.histogram(full_data[k], bins=bins, range=bounds[k])
-                loc_hist = np.array(loc_hist, dtype=np.float64)
+
+            for field in pdf_list:
+                loc_hist    = np.array(histograms[field], dtype=np.float64)
                 global_hist = np.zeros_like(loc_hist, dtype=np.float64)
                 self.dist_comm.Allreduce(loc_hist, global_hist, op=MPI.SUM)
-                local_counts, global_counts = np.zeros(1), np.zeros(1)
-                local_counts[0] = np.prod(full_data[k].shape)
-                self.dist_comm.Allreduce(local_counts, global_counts, op=MPI.SUM)
 
-                dx = bin_edges[1]-bin_edges[0]
-                x_vals = bin_edges[:-1] + dx/2
-                pdf = global_hist/global_counts/dx
-                self.pdfs[k] = (pdf, x_vals, dx)
+                dx = bin_edges[field][1]-bin_edges[field][0]
+                x_vals  = bin_edges[field][:-1] + dx/2
+                pdf     = global_hist/np.sum(global_hist)/dx
+                self.pdfs[field] = (pdf, x_vals, dx)
+
             self._calculate_pdf_statistics()
         
 
@@ -187,7 +213,7 @@ class PdfPlotter(SingleFiletypePlotter):
                 ax.fill_between((mean-stdev, mean+stdev), pdf.min(), pdf.max(), color='orange', alpha=0.5)
                 ax.fill_between(xs, 1e-16, pdf, color='k', alpha=0.5)
                 ax.set_xlim(xs.min(), xs.max())
-                ax.set_ylim(pdf.min(), pdf.max())
+                ax.set_ylim(pdf[pdf > 0].min(), pdf.max())
                 ax.set_yscale('log')
                 ax.set_xlabel(k)
                 ax.set_ylabel('P({:s})'.format(k))
