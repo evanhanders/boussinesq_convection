@@ -30,6 +30,7 @@ Options:
 
     --restart=<restart_file>   Restart from checkpoint
     --restart_T2m=<restart_file>   Restart from checkpoint, going from forced to mixed BCs
+    --restart_T2m_Nu=<Nu>      Nusselt number of fixed-T run being restarted from [default: 1]
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
 
@@ -38,6 +39,7 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.5]
+     --RK443                   Use RK443 instead of RK222
 
     --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 20]
     --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
@@ -293,7 +295,11 @@ else:
 
 ### 5. Build solver
 # Note: SBDF2 timestepper does not currently work with AE.
-ts = de.timesteppers.RK222
+#ts = de.timesteppers.SBDF2
+if args['--RK443']:
+    ts = de.timesteppers.RK443
+else:
+    ts = de.timesteppers.RK222
 cfl_safety = float(args['--safety'])
 solver = problem.build_solver(ts)
 logger.info('Solver built')
@@ -304,13 +310,14 @@ checkpoint = Checkpoint(data_dir)
 checkpoint_min = 30
 restart = args['--restart']
 restart_T2m = args['--restart_T2m']
+not_corrected_times = True
 if restart is None and restart_T2m is None:
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
     T1.set_scales(domain.dealias)
     noise = global_noise(domain, int(args['--seed']))
     z_de = domain.grid(-1, scales=domain.dealias)
-    T1['g'] = 1e-6*P*np.sin(np.pi*z_de)*noise['g']*(-z_de)
+    T1['g'] = 1e-6*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
     T1.differentiate('z', out=T1_z)
 
     dt = None
@@ -319,20 +326,38 @@ elif restart_T2m is not None:
     logger.info("restarting from {} and swapping BCs".format(restart_T2m))
     dt = checkpoint.restart(restart_T2m, solver)
     mode = 'overwrite'
+
+    Nu = float(args['--restart_T2m_Nu'])
+            
     T1 = solver.state['T1']
-    T_off = np.mean(T1.interpolate(z=1/2)['g'])
-    T1['g'] -= T_off
+    u = solver.state['u']
+    w = solver.state['w']
+    vels = [u, w]
+    if threeD:
+        v = solver.state['v']
+        vels.append(v)
+
+    #Adjust from fixed T to fixed flux
+    z_de = domain.grid(-1, scales=domain.dealias)
+    T1.set_scales(domain.dealias, keep_data=True)
+    T1['g'] += (0.5 - z_de) #Add T0
+    T1['g'] /= Nu        #Scale Temp flucs properly
+    T1['g'] -= (0.5 - z_de) #Subtract T0
+    for v in vels:
+        v['g'] /= np.sqrt(Nu)
+    not_corrected_times = False
 else:
     logger.info("restarting from {}".format(restart))
     dt = checkpoint.restart(restart, solver)
     mode = 'append'
+    not_corrected_times = False
 checkpoint.set_checkpoint(solver, wall_dt=checkpoint_min*60, mode=mode)
    
 
 ### 7. Set simulation stop parameters, output, and CFL
-if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy
-elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P
-else:                            solver.stop_sim_time = 1/P
+if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy + solver.sim_time
+elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P + solver.sim_time
+else:                            solver.stop_sim_time = 1/P + solver.sim_time
 solver.stop_wall_time = run_time_wall*3600.
 
 max_dt    = 0.1/np.sqrt(DELTA_T_INIT)
@@ -381,7 +406,6 @@ first_step = True
 try:
     count = Re_avg = 0
     logger.info('Starting loop')
-    not_corrected_times = True
     init_time = last_time = solver.sim_time
     start_iter = solver.iteration
     start_time = time.time()

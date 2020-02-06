@@ -93,7 +93,7 @@ if stress_free:
 else:
     data_dir += '_noSlip'
 
-data_dir += "_Ra{}_Pr{}_a{}".format(args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
+data_dir += "_Ek{}_Ra{}_Pr{}_a{}".format(args['--Ekman'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
     data_dir += "_{}".format(args['--label'])
 data_dir += '/'
@@ -223,6 +223,7 @@ problem.add_bc("right(w) = 0", condition="(nx != 0) or  (ny != 0)")
 
 ### 5. Build solver
 # Note: SBDF2 timestepper does not currently work with AE.
+#ts = de.timesteppers.SBDF2
 ts = de.timesteppers.RK222
 cfl_safety = float(args['--safety'])
 solver = problem.build_solver(ts)
@@ -239,7 +240,7 @@ if restart is None:
     T1.set_scales(domain.dealias)
     noise = global_noise(domain, int(args['--seed']))
     z_de = domain.grid(-1, scales=domain.dealias)
-    T1['g'] = 1e-6*P*np.sin(np.pi*z_de)*noise['g']*(-z_de)
+    T1['g'] = 1e-6*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
     T1.differentiate('z', out=T1_z)
 
     dt = None
@@ -257,9 +258,9 @@ elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P
 else:                            solver.stop_sim_time = 1/P
 solver.stop_wall_time = run_time_wall*3600.
 
-max_dt    = 0.1
+max_dt    = 0.25
 if dt is None: dt = max_dt
-analysis_tasks = initialize_rotating_output(solver, data_dir, aspect, mode=mode)
+analysis_tasks = initialize_rotating_output(solver, data_dir, aspect, mode=mode, slice_output_dt=0.25)
 
 # CFL
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
