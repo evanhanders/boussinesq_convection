@@ -13,7 +13,7 @@ Options:
     --static_cbar                       If flagged, don't evolve the cbar with time
     --dpi=<dpi>                         Image pixel density [default: 200]
 
-    --col_inch=<in>                     Number of inches / column [default: 4]
+    --col_inch=<in>                     Number of inches / column [default: 3]
     --row_inch=<in>                     Number of inches / row [default: 3]
 
     --fig_type=<fig_type>               Type of figure to plot
@@ -44,9 +44,9 @@ plotter = SlicePlotter(root_dir, file_dir='slices', fig_name=fig_name, start_fil
 plotter_kwargs = { 'col_in' : int(args['--col_inch']), 'row_in' : int(args['--row_inch']) }
 
 if int(args['--fig_type']) == 1:
-    plotter.setup_grid(2, 2, **plotter_kwargs)
+    plotter.setup_grid(2, 3, **plotter_kwargs)
     plotter.grid.full_row_ax(0)
-    fnames = [(('T',), {'remove_x_mean' : True}), (('T near top',), {'remove_mean':True, 'y_basis':'y'}), (('T midplane',), {'remove_mean':True, 'y_basis':'y'})]
+    fnames = [(('T',), {'remove_x_mean' : True}), (('T near top',), {'remove_mean':True, 'y_basis':'y'}), (('T midplane',), {'remove_mean':True, 'y_basis':'y'}), (('vort_z integ',), {'y_basis':'y'})]
 
 
 
