@@ -5,6 +5,10 @@ This script uses a Fourier basis in the horizontal direction(s) with periodic bo
 conditions. The vertical direction is represented as Chebyshev coefficients.
 The equations are scaled in units of the buoyancy time (Fr = 1).
 
+By default, the boundary conditions are:
+    Velocity: Impenetrable, no-slip at both the top and bottom
+    Thermal:  Fixed flux (bottom), fixed temp (top)
+
 Usage:
     rayleigh_benard.py [options] 
 
@@ -16,10 +20,9 @@ Options:
     --ny=<nx>                  Horizontal resolution [default: 64]
     --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
-    --fixed_f                  Fixed flux boundary conditions top/bottom
-    --fixed_t                  Fixed temperature boundary conditions top/bottom
-    --forced_t                 Fixed temperature boundary conditions used to achieve evolved fixedF state
-    --stress_free              Stress free boundary conditions top/bottom
+    --fixed_f                  Fixed flux boundary conditions top/bottom (FF)
+    --fixed_t                  Fixed temperature boundary conditions top/bottom (TT)
+    --stress_free              Stress free boundary conditions top/bottom 
 
     --3D                       Run in 3D
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
@@ -28,8 +31,8 @@ Options:
     --run_time_buoy=<time>     Run time, in buoyancy times
     --run_time_therm=<time_>   Run time, in thermal times [default: 1]
 
-    --restart=<restart_file>   Restart from checkpoint
-    --restart_T2m=<restart_file>   Restart from checkpoint, going from forced to mixed BCs
+    --restart=<file>           Restart from checkpoint file
+    --restart_T2m=<file>       Restart from checkpoint file, going from TT to FT BCs 
     --restart_T2m_Nu=<Nu>      Nusselt number of fixed-T run being restarted from [default: 1]
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
@@ -39,13 +42,12 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.5]
-     --RK443                   Use RK443 instead of RK222
+    --RK443                    Use RK443 instead of RK222
 
-    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 20]
-    --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
+    --stat_wait_time=<t>       Time to wait before taking rolling averages of quantities like Nu [default: 20]
+    --stat_window=<t_w>        Max time to take rolling averages over [default: 100]
 
     --ae                       Do accelerated evolution
-    --use_theory               If using forced_t BCs, use theoretical Nu scaling to get a better value of dT quickly
 
 """
 import logging
@@ -75,7 +77,6 @@ args = docopt(__doc__)
 ### 1. Read in command-line args, set up data directory
 fixed_f = args['--fixed_f']
 fixed_t = args['--fixed_t']
-forced_t = args['--forced_t']
 if not (fixed_f or fixed_t):
     mixed_BCs = True
 
@@ -95,8 +96,6 @@ if fixed_f:
     data_dir += '_fixedF'
 elif fixed_t:
     data_dir += '_fixedT'
-elif forced_t:
-    data_dir += '_forcedT'
 else:
     data_dir += '_mixedFT'
 
@@ -112,7 +111,6 @@ else:
     data_dir += '_noSlip'
 
 data_dir += "_Ra{}_Pr{}_a{}".format(args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
-if args['--use_theory']: data_dir += '_theory'
 if args['--label'] is not None:
     data_dir += "_{}".format(args['--label'])
 data_dir += '/'
@@ -170,47 +168,13 @@ if not threeD:
     variables.remove('Oz')
 problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
-DELTA_T_INIT = 1
-
-def top_temp():
-    if GLOBAL_NU is None:
-        return 0
-    else:
-        delta_T = 1/GLOBAL_NU
-    top_temp = DELTA_T_INIT/2 - delta_T/2
-    return top_temp
-
-def bot_temp():
-    if GLOBAL_NU is None:
-        return 0
-    else:
-        delta_T = 1/GLOBAL_NU
-    bot_temp = -DELTA_T_INIT/2 + delta_T/2
-    return bot_temp
-
-def bot_temp_forcing(*args, domain=domain, F=bot_temp):
-    return de.operators.GeneralFunction(domain, layout='g', func=F, args=args)
-
-def top_temp_forcing(*args, domain=domain, F=top_temp):
-    return de.operators.GeneralFunction(domain, layout='g', func=F, args=args)
-        
-de.operators.parseables['top_temp_forcing'] = top_temp_forcing
-de.operators.parseables['bot_temp_forcing'] = bot_temp_forcing
-
 problem.parameters['P'] = P
 problem.parameters['R'] = R
 problem.parameters['Lx'] = problem.parameters['Ly'] = aspect
 problem.parameters['Lz'] = 1
 
-if args['--use_theory']:
-    Ra_crit = 657.511 #TODO: generalize to no-slip BCs
-#    nu = 1.7*(ra/Ra_crit)**(1./4)
-    DELTA_T_INIT = 0.5 #1/nu
-#    if nu > 2: DELTA_T_INIT *= 2
-logger.info('delta T init: {:.4g}'.format(DELTA_T_INIT))
-
-problem.substitutions['T0']   = '(-{}*z + 0.5)'.format(DELTA_T_INIT)
-problem.substitutions['T0_z'] = '-{}'.format(DELTA_T_INIT)
+problem.substitutions['T0']   = '(-z + 0.5)'
+problem.substitutions['T0_z'] = '-1'
 problem.substitutions['Lap(A, A_z)']=       '(dx(dx(A)) + dy(dy(A)) + dz(A_z))'
 problem.substitutions['UdotGrad(A, A_z)'] = '(u*dx(A) + v*dy(A) + w*A_z)'
 
@@ -259,10 +223,6 @@ elif args['--fixed_t']:
     logger.info("Thermal BC: fixed temperature (T1)")
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
-elif args['--forced_t']:
-    logger.info("Thermal BC: forced flux temperature")
-    problem.add_bc( "left(T1) =  left(bot_temp_forcing())")
-    problem.add_bc("right(T1) = right(top_temp_forcing())")
 else:
     logger.info("Thermal BC: fixed flux/fixed temperature")
     problem.add_bc("left(T1_z) = 0")
@@ -360,7 +320,7 @@ elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P + solve
 else:                            solver.stop_sim_time = 1/P + solver.sim_time
 solver.stop_wall_time = run_time_wall*3600.
 
-max_dt    = 0.1/np.sqrt(DELTA_T_INIT)
+max_dt    = 0.1
 if dt is None: dt = max_dt
 analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, mode=mode)
 
@@ -378,13 +338,11 @@ flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
 flow.add_property("Re", name='Re')
 flow.add_property("vel_rms**2/2", name='KE')
 flow.add_property("Nu", name='Nu')
-flow.add_property("-{} + (left(T1_z) + right(T1_z) ) / 2".format(DELTA_T_INIT), name='Tz_excess')
 flow.add_property("T0+T1", name='T')
 
 rank = domain.dist.comm_cart.rank
 if rank == 0:
     nu_vals    = np.zeros(5*int(args['--stat_window']))
-    Tz_excess  = np.zeros(5*int(args['--stat_window']))
     temp_vals  = np.zeros(5*int(args['--stat_window']))
     dt_vals    = np.zeros(5*int(args['--stat_window']))
     writes     = 0
@@ -410,6 +368,7 @@ try:
     start_iter = solver.iteration
     start_time = time.time()
     avg_nu = avg_temp = avg_tz = 0
+    wait_time = float(args['--stat_wait_time'])
     while (solver.ok and np.isfinite(Re_avg)) or first_step:
         if first_step: first_step = False
         if Re_avg > 1:
@@ -437,32 +396,26 @@ try:
         if Re_avg > 1:
             # Rolling average logic 
             if last_time == init_time:
-                last_time = solver.sim_time + float(args['--stat_wait_time'])
+                last_time = solver.sim_time + wait_time 
             if solver.sim_time - last_time >= 0.2:
-                avg_Nu, avg_T, Tz = flow.grid_average('Nu'), flow.grid_average('T'), flow.grid_average('Tz_excess')
+                avg_Nu, avg_T = flow.grid_average('Nu'), flow.grid_average('T')
                 if domain.dist.comm_cart.rank == 0:
                     if writes != dt_vals.shape[0]:
                         dt_vals[writes] = solver.sim_time - last_time
                         nu_vals[writes] = avg_Nu
                         temp_vals[writes] = avg_T
-                        Tz_excess[writes] = Tz
                         writes += 1
                     else:
                         dt_vals[:-1] = dt_vals[1:]
                         nu_vals[:-1] = nu_vals[1:]
                         temp_vals[:-1] = temp_vals[1:]
-                        Tz_excess[:-1] = Tz_excess[1:]
                         dt_vals[-1] = solver.sim_time - last_time
                         nu_vals[-1] = avg_Nu
                         temp_vals[-1] = avg_T
-                        Tz_excess[-1] = Tz
 
         
-                    if args['--use_theory']: wait_time = 10
-                    else: wait_time = 10
                     if np.sum(dt_vals) > wait_time:
                         GLOBAL_NU = avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
-                        avg_tz   = np.sum((dt_vals*Tz_excess)[:writes])/np.sum(dt_vals[:writes])
                         avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
                 last_time = solver.sim_time
                 GLOBAL_NU = domain.dist.comm_cart.bcast(GLOBAL_NU, root=0)
@@ -478,7 +431,6 @@ try:
             log_string += 'KE: {:8.3e}/{:8.3e}, '.format(flow.grid_average('KE'), flow.max('KE'))
             log_string += 'Nu: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('Nu'), avg_nu)
             log_string += 'T: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('T'), avg_temp)
-            log_string += 'Tz: {:8.3e} (av: {:8.3e})'.format(flow.grid_average('Tz_excess'), avg_tz)
             logger.info(log_string)
 except:
     raise

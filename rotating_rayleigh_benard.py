@@ -5,6 +5,10 @@ This script uses a Fourier basis in the horizontal direction(s) with periodic bo
 conditions. The vertical direction is represented as Chebyshev coefficients.
 The equations are scaled in units of the buoyancy time (Fr = 1).
 
+By default, the boundary conditions are:
+    Velocity: Impenetrable, stress-free at both the top and bottom
+    Thermal:  Fixed flux (bottom), fixed temp (top)
+
 Usage:
     rotating_rayleigh_benard.py [options] 
 
@@ -17,8 +21,8 @@ Options:
     --ny=<nx>                  Horizontal resolution [default: 64]
     --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
-    --fixed_f                  Fixed flux boundary conditions top/bottom
-    --fixed_t                  Fixed temperature boundary conditions top/bottom
+    --fixed_f                  Fixed flux boundary conditions top/bottom (FF)
+    --fixed_t                  Fixed temperature boundary conditions top/bottom (TT)
     --no_slip                  Stress free boundary conditions top/bottom
 
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
@@ -27,7 +31,7 @@ Options:
     --run_time_buoy=<time>     Run time, in buoyancy times
     --run_time_therm=<time_>   Run time, in thermal times [default: 1]
 
-    --restart=<restart_file>   Restart from checkpoint
+    --restart=<file>           Restart from checkpoint file
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
 
@@ -37,8 +41,8 @@ Options:
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.5]
 
-    --stat_wait_time=<t>       Time to wait before averaging Nu, T [default: 20]
-    --stat_window=<t_w>        Time to take Nu, T averages over [default: 100]
+    --stat_wait_time=<t>       Time to wait before taking rolling averages of quantities like Nu [default: 20]
+    --stat_window=<t_w>        Max time to take rolling averages over [default: 100]
 
     --ae                       Do accelerated evolution
 

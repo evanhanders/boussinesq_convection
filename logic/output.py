@@ -26,6 +26,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
     profiles.add_task("plane_avg(u)", name="u")
     profiles.add_task("plane_avg(w)", name="w")
     profiles.add_task("plane_avg(enstrophy)", name="enstrophy")
+    profiles.add_task('plane_avg(Oy)', name="y_vorticity")
     profiles.add_task("plane_avg(Nu)", name="Nu")
     profiles.add_task("plane_avg(Re)", name="Re")
     profiles.add_task("plane_avg(Pe)", name="Pe")
@@ -55,6 +56,8 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
     scalar.add_task("vol_avg(2*T1*dx(Oy))", name="enstrophy_buoy_source")
     scalar.add_task("vol_avg(w*dz(Oy**2) + u*dx(Oy**2))", name="enstrophy_advec_source")
     scalar.add_task("vol_avg(-2*R*(dz(Oy)**2 + dx(Oy)**2))", name="enstrophy_visc_source")
+    scalar.add_task("vol_avg(u)",  name="u")
+    scalar.add_task("vol_avg(w)",  name="w")
     analysis_tasks['scalar'] = scalar
 
     if threeD:
@@ -73,8 +76,10 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
         analysis_tasks['profiles'].add_task('plane_avg(Oz)', name="z_vorticity")
         analysis_tasks['profiles'].add_task('plane_avg(Ox)', name="x_vorticity")
-        analysis_tasks['profiles'].add_task('plane_avg(Oy)', name="y_vorticity")
         analysis_tasks['profiles'].add_task('plane_avg(v)', name="v")
+
+
+        analysis_tasks['scalar'].add_task("vol_avg(v)",  name="v")
 
         if volumes:
             analysis_volume = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=vol_output_dt, max_writes=max_writes, mode=mode)
@@ -115,9 +120,6 @@ def initialize_rotating_output(*args, **kwargs):
     analysis_tasks = initialize_output(*args, threeD=True, **kwargs)
     analysis_tasks['scalar'].add_task("vol_avg(Ro)", name="Ro")
     analysis_tasks['scalar'].add_task("vol_avg(true_Ro)", name="true_Ro")
-    analysis_tasks['scalar'].add_task("vol_avg(u)",  name="u")
-    analysis_tasks['scalar'].add_task("vol_avg(v)",  name="v")
-    analysis_tasks['scalar'].add_task("vol_avg(w)",  name="w")
     analysis_tasks['scalar'].add_task("vol_avg(Ox)", name="Ox")
     analysis_tasks['scalar'].add_task("vol_avg(Oy)", name="Oy")
     analysis_tasks['scalar'].add_task("vol_avg(Oz)", name="Oz")
