@@ -172,56 +172,54 @@ class ProfilePlotter(SingleFiletypePlotter):
             Image pixel density
         **kwargs : Additional keyword arguments for ColorbarPlotGrid() 
         """
-        with self.my_sync:
-            if self.idle: return
-            tasks = []
-            bases = []
-            for cm in self.colormeshes:
-                if cm.field not in tasks:
-                    tasks.append(cm.field)
-                if cm.basis not in bases:
-                    bases.append(cm.basis)
-            profiles, bs, times = self.get_profiles(tasks, bases)
+        tasks = []
+        bases = []
+        for cm in self.colormeshes:
+            if cm.field not in tasks:
+                tasks.append(cm.field)
+            if cm.basis not in bases:
+                bases.append(cm.basis)
+        profiles, bs, times = self.get_profiles(tasks, bases)
 
-            if self.reader.comm.rank != 0: return
-            grid = ColorbarPlotGrid(1,1, **kwargs)
-            ax = grid.axes['ax_0-0']
-            cax = grid.cbar_axes['ax_0-0']
-            for cm in self.colormeshes:
-                basis = bs[cm.basis]
-                yy, xx = np.meshgrid(basis, times)
-                k = cm.field
-                data = profiles[k]
+        if self.reader.comm.rank != 0: return
+        grid = ColorbarPlotGrid(1,1, **kwargs)
+        ax = grid.axes['ax_0-0']
+        cax = grid.cbar_axes['ax_0-0']
+        for cm in self.colormeshes:
+            basis = bs[cm.basis]
+            yy, xx = np.meshgrid(basis, times)
+            k = cm.field
+            data = profiles[k]
 
-                print('Making colormesh plot {}'.format(k))
-                stdout.flush()
+            print('Making colormesh plot {}'.format(k))
+            stdout.flush()
 
-                #Chop extreme values off of colormap
-                vals = np.sort(data.flatten())
-                if cm.pos_def:
-                    vals = np.sort(vals)
-                    if np.mean(vals) < 0:
-                        vmin, vmax = vals[int(0.002*len(vals))], 0
-                    else:
-                        vmin, vmax = 0, vals[int(0.998*len(vals))]
+            #Chop extreme values off of colormap
+            vals = np.sort(data.flatten())
+            if cm.pos_def:
+                vals = np.sort(vals)
+                if np.mean(vals) < 0:
+                    vmin, vmax = vals[int(0.002*len(vals))], 0
                 else:
-                    vals = np.sort(np.abs(vals))
-                    vmax = vals[int(0.998*len(vals))]
-                    vmin = -vmax
-                
-                #Plot and make colorbar
-                plot = ax.pcolormesh(xx, yy, data, cmap=cm.cmap, vmin=vmin, vmax=vmax, rasterized=True)
-                cb = plt.colorbar(plot, cax=cax, orientation='horizontal')
-                cb.solids.set_rasterized(True)
-                cb.set_ticks((vmin, vmax))
-                cb.set_ticklabels(('{:.2e}'.format(vmin), '{:.2e}'.format(vmax)))
-                cax.xaxis.set_ticks_position('bottom')
-                cax.text(0.5, 0.25, '{:s}'.format(k), transform=cax.transAxes)
+                    vmin, vmax = 0, vals[int(0.998*len(vals))]
+            else:
+                vals = np.sort(np.abs(vals))
+                vmax = vals[int(0.998*len(vals))]
+                vmin = -vmax
+            
+            #Plot and make colorbar
+            plot = ax.pcolormesh(xx, yy, data, cmap=cm.cmap, vmin=vmin, vmax=vmax, rasterized=True)
+            cb = plt.colorbar(plot, cax=cax, orientation='horizontal')
+            cb.solids.set_rasterized(True)
+            cb.set_ticks((vmin, vmax))
+            cb.set_ticklabels(('{:.2e}'.format(vmin), '{:.2e}'.format(vmax)))
+            cax.xaxis.set_ticks_position('bottom')
+            cax.text(0.5, 0.25, '{:s}'.format(k), transform=cax.transAxes)
 
-                #Save
-                grid.fig.savefig('{:s}/{:s}_{:s}.png'.format(self.out_dir, self.fig_name, k), dpi=dpi, bbox_inches='tight')
-                ax.clear()
-                cax.clear()
+            #Save
+            grid.fig.savefig('{:s}/{:s}_{:s}.png'.format(self.out_dir, self.fig_name, k), dpi=dpi, bbox_inches='tight')
+            ax.clear()
+            cax.clear()
 
     def plot_avg_profiles(self, dpi=200, **kwargs):
         """
@@ -234,55 +232,53 @@ class ProfilePlotter(SingleFiletypePlotter):
         **kwargs : Additional keyword arguments for PlotGrid() 
         """
 
-        with self.my_sync:
-            if self.idle: return
-            tasks = []
-            bases = []
-            for prof in self.avg_profs:
-                if prof.field not in tasks:
-                    tasks.append(prof.field)
-                if prof.basis not in bases:
-                    bases.append(prof.basis)
-            profiles, bs, times = self.get_profiles(tasks, bases)
+        tasks = []
+        bases = []
+        for prof in self.avg_profs:
+            if prof.field not in tasks:
+                tasks.append(prof.field)
+            if prof.basis not in bases:
+                bases.append(prof.basis)
+        profiles, bs, times = self.get_profiles(tasks, bases)
 
-            if self.reader.comm.rank != 0: return
-            grid = PlotGrid(1,1, **kwargs)
-            ax = grid.axes['ax_0-0']
-            averaged_profiles = OrderedDict()
-            averaged_times = OrderedDict()
-            for prof in self.avg_profs:
-                n_writes = np.int(np.ceil(len(times)/prof.avg_writes))
-                basis = bs[prof.basis]
-                k = prof.field
-                data = profiles[k]
-                averaged_profiles[prof.field] = []
-                averaged_times[prof.field] = []
-                for i in range(n_writes):
-                    if i == n_writes-1:
-                        profile = np.mean(data[i*prof.avg_writes:,:], axis=0)
-                        t1, t2 = times[i*prof.avg_writes], times[-1]
-                    else:
-                        profile = np.mean(data[i*prof.avg_writes:(i+1)*prof.avg_writes,:], axis=0)
-                        t1, t2 = times[i*prof.avg_writes], times[(i+1)*prof.avg_writes]
+        if self.reader.comm.rank != 0: return
+        grid = PlotGrid(1,1, **kwargs)
+        ax = grid.axes['ax_0-0']
+        averaged_profiles = OrderedDict()
+        averaged_times = OrderedDict()
+        for prof in self.avg_profs:
+            n_writes = np.int(np.ceil(len(times)/prof.avg_writes))
+            basis = bs[prof.basis]
+            k = prof.field
+            data = profiles[k]
+            averaged_profiles[prof.field] = []
+            averaged_times[prof.field] = []
+            for i in range(n_writes):
+                if i == n_writes-1:
+                    profile = np.mean(data[i*prof.avg_writes:,:], axis=0)
+                    t1, t2 = times[i*prof.avg_writes], times[-1]
+                else:
+                    profile = np.mean(data[i*prof.avg_writes:(i+1)*prof.avg_writes,:], axis=0)
+                    t1, t2 = times[i*prof.avg_writes], times[(i+1)*prof.avg_writes]
 
-                    averaged_profiles[prof.field].append(profile)
-                    averaged_times[prof.field].append((t1,t2))
+                averaged_profiles[prof.field].append(profile)
+                averaged_times[prof.field].append((t1,t2))
 
-                    if self.reader.comm.rank == 0:
-                        print('writing {} plot {}/{}'.format(k, i+1, n_writes))
-                        stdout.flush()
+                if self.reader.comm.rank == 0:
+                    print('writing {} plot {}/{}'.format(k, i+1, n_writes))
+                    stdout.flush()
 
-                    ax.grid(which='major')
-                    plot = ax.plot(basis, profile, lw=2)
-                    ax.set_ylabel(k)
-                    ax.set_xlabel(prof.basis)
-                    ax.set_title('t = {:.4e}-{:.4e}'.format(t1, t2))
-                    ax.set_xlim(basis.min(), basis.max())
-                    ax.set_ylim(profile.min(), profile.max())
+                ax.grid(which='major')
+                plot = ax.plot(basis, profile, lw=2)
+                ax.set_ylabel(k)
+                ax.set_xlabel(prof.basis)
+                ax.set_title('t = {:.4e}-{:.4e}'.format(t1, t2))
+                ax.set_xlim(basis.min(), basis.max())
+                ax.set_ylim(profile.min(), profile.max())
 
-                    grid.fig.savefig('{:s}/{:s}_{:s}_avg{:04d}.png'.format(self.out_dir, self.fig_name, k, i+1), dpi=dpi, bbox_inches='tight')
-                    ax.clear()
-                self._save_avg_profiles(bs, averaged_profiles, averaged_times)
+                grid.fig.savefig('{:s}/{:s}_{:s}_avg{:04d}.png'.format(self.out_dir, self.fig_name, k, i+1), dpi=dpi, bbox_inches='tight')
+                ax.clear()
+            self._save_avg_profiles(bs, averaged_profiles, averaged_times)
 
     def _save_avg_profiles(self, bases, profiles, times):
         """

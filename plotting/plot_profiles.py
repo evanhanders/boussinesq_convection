@@ -39,7 +39,7 @@ fig_name   = args['--fig_name']
 plotter = ProfilePlotter(root_dir, file_dir='profiles', fig_name=fig_name, start_file=start_file, n_files=n_files)
 
 if int(args['--fig_type']) == 1:
-    fnames = [(('T',), {}), (('enth_flux',), {}), (('kappa_flux',), {}), (('tot_flux',), {})]
+    fnames = [(('T',), {}), (('enth_flux',), {}), (('kappa_flux',), {}), (('tot_flux',), {}), (('enstrophy',), {}), (('u',), {})]
 
 for tup in fnames:
     plotter.add_colormesh(*tup[0], **tup[1])
