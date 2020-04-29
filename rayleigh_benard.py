@@ -20,9 +20,10 @@ Options:
     --ny=<nx>                  Horizontal resolution [default: 64]
     --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
-    --fixed_f                  Fixed flux boundary conditions top/bottom (FF)
-    --fixed_t                  Fixed temperature boundary conditions top/bottom (TT)
-    --stress_free              Stress free boundary conditions top/bottom 
+    --FF                       Fixed flux boundary conditions top/bottom (default FT)
+    --TT                       Fixed temperature boundary conditions top/bottom (default FT)
+    --FS                       Free-slip/stress free boundary conditions (default No-slip, NS)
+    --smart_ICs                Use smarter static initial conditions for flux boundaries
 
     --3D                       Run in 3D
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
@@ -43,6 +44,7 @@ Options:
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.5]
     --RK443                    Use RK443 instead of RK222
+
 
     --stat_wait_time=<t>       Time to wait before taking rolling averages of quantities like Nu [default: 20]
     --stat_window=<t_w>        Max time to take rolling averages over [default: 100]
@@ -75,14 +77,18 @@ logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
 ### 1. Read in command-line args, set up data directory
-fixed_f = args['--fixed_f']
-fixed_t = args['--fixed_t']
-if not (fixed_f or fixed_t):
-    mixed_BCs = True
+FF = args['--FF']
+TT = args['--TT']
+if not (FF or TT):
+    FT = True
+else:
+    FT = False
 
-stress_free = args['--stress_free']
-if not stress_free:
-    no_slip = True
+FS = args['--FS']
+if not FS:
+    NS = True
+else:
+    NS = False
 
 data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
 
@@ -92,9 +98,9 @@ if threeD:
 else:
     data_dir += '_2D'
 
-if fixed_f:
+if FF:
     data_dir += '_fixedF'
-elif fixed_t:
+elif TT:
     data_dir += '_fixedT'
 else:
     data_dir += '_mixedFT'
@@ -105,7 +111,7 @@ if args['--ae']:
 if args['--restart_T2m'] is not None:
     data_dir += '_restartedT2m'
 
-if stress_free:
+if FS:
     data_dir += '_stressFree'
 else:
     data_dir += '_noSlip'
@@ -215,11 +221,11 @@ problem.add_equation("Oy - dz(u) + dx(w) = 0")
 if threeD: problem.add_equation("Oz - dx(v) + dy(u) = 0")
 
 
-if args['--fixed_f']:
+if FF:
     logger.info("Thermal BC: fixed flux (full form)")
     problem.add_bc( "left(T1_z) = 0")
     problem.add_bc("right(T1_z) = 0")
-elif args['--fixed_t']:
+elif TT:
     logger.info("Thermal BC: fixed temperature (T1)")
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
@@ -228,8 +234,8 @@ else:
     problem.add_bc("left(T1_z) = 0")
     problem.add_bc("right(T1)  = 0")
 
-if args['--stress_free']:
-    logger.info("Horizontal velocity BC: stress free")
+if FS:
+    logger.info("Horizontal velocity BC: free-slip/stress free")
     problem.add_bc("left(Oy) = 0")
     problem.add_bc("right(Oy) = 0")
     if threeD:
@@ -251,6 +257,20 @@ if threeD:
 else:
     problem.add_bc("right(p) = 0", condition="(nx == 0)")
     problem.add_bc("right(w) = 0", condition="(nx != 0)")
+
+# Ra crit literature values from Goluskin 2016 RBC & IH convection, table 2.2
+if   FF and FS:
+    ra_crit = 120
+elif FF and NS:
+    ra_crit = 720
+elif TT and FS:
+    ra_crit = 657.5
+elif TT and NS:
+    ra_crit = 1707.76
+elif FT and FS:
+    ra_crit = 384.693
+else: #FT, NS
+    ra_crit = 1295.78
 
 
 ### 5. Build solver
@@ -275,10 +295,31 @@ if restart is None and restart_T2m is None:
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
     T1.set_scales(domain.dealias)
-    noise = global_noise(domain, int(args['--seed']))
+    T1_z.set_scales(domain.dealias)
     z_de = domain.grid(-1, scales=domain.dealias)
-    T1['g'] = 1e-6*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
+
+    if args['--smart_ICs']:
+        from scipy.special import erf
+        def one_to_zero(z, z0, delta):
+            return -(1/2)*(erf( (z - z0) / delta ) - 1)
+
+        if FT:
+            dT_evolved = -1*(ra/ra_crit)**(-1/4)
+            window = one_to_zero(z_de, -0.35, 0.05)
+            T1_z['g'] = window
+            w_integ   = np.mean(T1_z.integrate('z')['g'])
+            upper_grad_T = (dT_evolved + w_integ) / (1 - w_integ)
+            T1_z['g'] = upper_grad_T + window*(-1 - upper_grad_T) # Full T field
+            T1_z['g'] -= (-1) #Subtract off T0z of constant coefficient.
+            T1_z.antidifferentiate('z', ('right', 0), out=T1)
+        else:
+            logger.info("WARNING: Smart ICS not implemented for boundary condition choice.")
+
+    #Add noise kick
+    noise = global_noise(domain, int(args['--seed']))
+    T1['g'] += 1e-6*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
     T1.differentiate('z', out=T1_z)
+
 
     dt = None
     mode = 'overwrite'
