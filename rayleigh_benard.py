@@ -319,7 +319,9 @@ if restart is None and restart_T2m is None:
 
         if FT:
             #Solve out for estimated delta T / BL depth from Nu v Ra.
-            dT_evolved = -1*(ra/ra_crit)**(-1/4)
+            Nu_law_const  = 0.138
+            Nu_law_alpha  = 0.285
+            dT_evolved = -1*(Nu_law_const*ra**(Nu_law_alpha))**(-1/(1+Nu_law_alpha))
             d_BL = dT_evolved/(-2) #thermal BL depth
 
             #Generate windowing function for boundary layers where dT/dz = -1
