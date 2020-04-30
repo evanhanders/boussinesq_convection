@@ -99,11 +99,14 @@ else:
     data_dir += '_2D'
 
 if FF:
-    data_dir += '_fixedF'
+    data_dir += '_FF'
 elif TT:
-    data_dir += '_fixedT'
+    data_dir += '_TT'
 else:
-    data_dir += '_mixedFT'
+    data_dir += '_FT'
+
+if args['--smart_ICs']:
+    data_dir += '_smart'
 
 if args['--ae']:
     data_dir += '_AE'
@@ -112,9 +115,9 @@ if args['--restart_T2m'] is not None:
     data_dir += '_restartedT2m'
 
 if FS:
-    data_dir += '_stressFree'
+    data_dir += '_FS'
 else:
-    data_dir += '_noSlip'
+    data_dir += '_NS'
 
 data_dir += "_Ra{}_Pr{}_a{}".format(args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
@@ -292,32 +295,59 @@ restart = args['--restart']
 restart_T2m = args['--restart_T2m']
 not_corrected_times = True
 if restart is None and restart_T2m is None:
+    p = solver.state['p']
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
+    p.set_scales(domain.dealias)
     T1.set_scales(domain.dealias)
     T1_z.set_scales(domain.dealias)
     z_de = domain.grid(-1, scales=domain.dealias)
+
+    A0 = 1e-6
 
     if args['--smart_ICs']:
         from scipy.special import erf
         def one_to_zero(z, z0, delta):
             return -(1/2)*(erf( (z - z0) / delta ) - 1)
+        def zero_to_one(*args):
+            return 1-one_to_zero(*args)
+
+        # for some reason I run into filesystem errors when I just use T1 to antidifferentiate for HS for HSE
+        # use a work field instead.
+        work_field  = domain.new_field()
+        work_field.set_scales(domain.dealias)
 
         if FT:
+            #Solve out for estimated delta T / BL depth from Nu v Ra.
             dT_evolved = -1*(ra/ra_crit)**(-1/4)
-            window = one_to_zero(z_de, -0.35, 0.05)
+            d_BL = dT_evolved/(-2) #thermal BL depth
+
+            #Generate windowing function for boundary layers where dT/dz = -1
+            window = one_to_zero(z_de, -0.5+2*d_BL, d_BL/2) + zero_to_one(z_de, 0.5-2*d_BL, d_BL/2) 
             T1_z['g'] = window
             w_integ   = np.mean(T1_z.integrate('z')['g'])
-            upper_grad_T = (dT_evolved + w_integ) / (1 - w_integ)
-            T1_z['g'] = upper_grad_T + window*(-1 - upper_grad_T) # Full T field
+
+            # dT/dz = (grad T)_interior + window*(-1 - (grad T)_interior)
+            # assuming (grad T)_interior is a constant, integ ( dT/dz ) = dT_evolved
+            # Rearrange for (grad T)_interior
+            grad_T_interior = (dT_evolved + w_integ) / (1 - w_integ)
+            T1_z['g'] = grad_T_interior + window*(-1 - grad_T_interior) # Full T field
             T1_z['g'] -= (-1) #Subtract off T0z of constant coefficient.
             T1_z.antidifferentiate('z', ('right', 0), out=T1)
+
+            #Hydrostatic equilibrium
+            work_field['g'] = T1['g'] 
+            work_field.antidifferentiate(  'z', ('right', 0), out=p) #hydrostatic equilibrium
+
+            #Adjust magnitude of noise so effective A0 = 1.
+            A0 /= np.cos(np.pi*(-0.5+2*d_BL))
         else:
             logger.info("WARNING: Smart ICS not implemented for boundary condition choice.")
+        
 
     #Add noise kick
     noise = global_noise(domain, int(args['--seed']))
-    T1['g'] += 1e-6*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
+    T1['g'] += A0*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
     T1.differentiate('z', out=T1_z)
 
 
@@ -363,7 +393,7 @@ solver.stop_wall_time = run_time_wall*3600.
 
 max_dt    = 0.1
 if dt is None: dt = max_dt
-analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, mode=mode)
+analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, mode=mode, volumes=True)
 
 # CFL
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
