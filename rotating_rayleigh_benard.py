@@ -21,9 +21,9 @@ Options:
     --ny=<nx>                  Horizontal resolution [default: 64]
     --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
-    --fixed_f                  Fixed flux boundary conditions top/bottom (FF)
-    --fixed_t                  Fixed temperature boundary conditions top/bottom (TT)
-    --no_slip                  Stress free boundary conditions top/bottom
+    --FF                       Fixed flux boundary conditions top/bottom (FF)
+    --TT                       Fixed temperature boundary conditions top/bottom (TT)
+    --NS                       No-slip boundary conditions top/bottom
 
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
     
@@ -70,32 +70,36 @@ logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
 ### 1. Read in command-line args, set up data directory
-fixed_f = args['--fixed_f']
-fixed_t = args['--fixed_t']
-if not (fixed_f or fixed_t):
-    mixed_BCs = True
+FF = args['--FF']
+TT = args['--TT']
+if not (FF or TT):
+    FT = True
+else:
+    FT = False
 
-no_slip = args['--no_slip']
-if not no_slip:
-    stress_free = True
+NS = args['--NS']
+if not NS:
+    FS = True
+else:
+    FS = False
 
 data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
 
-if fixed_f:
-    data_dir += '_fixedF'
-elif fixed_t:
-    data_dir += '_fixedT'
+if FF:
+    data_dir += '_FF'
+elif TT:
+    data_dir += '_TT'
 else:
-    data_dir += '_mixedFT'
+    data_dir += '_FT'
 
 if args['--ae']:
     data_dir += '_AE'
 
 
-if stress_free:
-    data_dir += '_stressFree'
+if FS:
+    data_dir += '_FS'
 else:
-    data_dir += '_noSlip'
+    data_dir += '_NS'
 
 data_dir += "_Ek{}_Ra{}_Pr{}_a{}".format(args['--Ekman'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
@@ -193,11 +197,11 @@ problem.add_equation("Oy - dz(u) + dx(w) = 0")
 problem.add_equation("Oz - dx(v) + dy(u) = 0")
 
 
-if fixed_f:
+if FF:
     logger.info("Thermal BC: fixed flux (full form)")
     problem.add_bc( "left(T1_z) = 0")
     problem.add_bc("right(T1_z) = 0")
-elif fixed_t:
+elif TT:
     logger.info("Thermal BC: fixed temperature (T1)")
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
@@ -206,8 +210,8 @@ else:
     problem.add_bc("left(T1_z) = 0")
     problem.add_bc("right(T1)  = 0")
 
-if stress_free:
-    logger.info("Horizontal velocity BC: stress free")
+if FS:
+    logger.info("Horizontal velocity BC: stress free/free-slip")
     problem.add_bc("left(Oy) = 0")
     problem.add_bc("right(Oy) = 0")
     problem.add_bc("left(Ox) = 0")
