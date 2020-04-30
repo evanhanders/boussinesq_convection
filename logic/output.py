@@ -64,13 +64,18 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
         #Analysis
         slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=slice_output_dt, max_writes=max_writes, mode=mode)
         slices.add_task("interp(T1 + T0,         y={})".format(0), name='T')
-        slices.add_task("interp(T1 + T0,         z={})".format(0.45), name='T near top')
+        slices.add_task("interp(T1 + T0,         z={})".format(0.49), name='T near top')
+        slices.add_task("interp(T1 + T0,         z={})".format(-0.49), name='T near bot 1')
+        slices.add_task("interp(T1 + T0,         z={})".format(-0.48), name='T near bot 2')
+        slices.add_task("interp(T1 + T0,         z={})".format(-0.47), name='T near bot 3')
         slices.add_task("interp(T1 + T0,         z={})".format(0), name='T midplane')
         slices.add_task("interp(w,         y={})".format(0), name='w')
-        slices.add_task("interp(w,         z={})".format(0.45), name='w near top')
+        slices.add_task("interp(w,         z={})".format(0.49), name='w near top')
+        slices.add_task("interp(w,         z={})".format(-0.49), name='w near bot')
         slices.add_task("interp(w,         z={})".format(0), name='w midplane')
         slices.add_task("interp(enstrophy,         y={})".format(0),    name='enstrophy')
-        slices.add_task("interp(enstrophy,         z={})".format(0.45), name='enstrophy near top')
+        slices.add_task("interp(enstrophy,         z={})".format(0.49), name='enstrophy near top')
+        slices.add_task("interp(enstrophy,         z={})".format(-0.49), name='enstrophy near bot')
         slices.add_task("interp(enstrophy,         z={})".format(0),    name='enstrophy midplane')
         analysis_tasks['slices'] = slices
 
@@ -82,8 +87,9 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
         analysis_tasks['scalar'].add_task("vol_avg(v)",  name="v")
 
         if volumes:
-            analysis_volume = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=vol_output_dt, max_writes=max_writes, mode=mode)
+            analysis_volume = solver.evaluator.add_file_handler(data_dir+'volumes', sim_dt=vol_output_dt, max_writes=5, mode=mode)
             analysis_volume.add_task("T1 + T0", name="T")
+            analysis_volume.add_task("w*(T1 + T0)", name="wT")
             analysis_tasks['volumes'] = analysis_volume
     else:
         # Analysis
@@ -100,14 +106,14 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
 
         powers = solver.evaluator.add_file_handler(data_dir+'powers', sim_dt=slice_output_dt, max_writes=max_writes*10, mode=mode)
         powers.add_task("interp(T1,         z={})".format(0),    name='T midplane', layout='c')
-        powers.add_task("interp(T1,         z={})".format(-0.45), name='T near bot', layout='c')
-        powers.add_task("interp(T1,         z={})".format(0.45), name='T near top', layout='c')
+        powers.add_task("interp(T1,         z={})".format(-0.49), name='T near bot', layout='c')
+        powers.add_task("interp(T1,         z={})".format(0.49), name='T near top', layout='c')
         powers.add_task("interp(u,         z={})".format(0),    name='u midplane' , layout='c')
-        powers.add_task("interp(u,         z={})".format(-0.45), name='u near bot' , layout='c')
-        powers.add_task("interp(u,         z={})".format(0.45), name='u near top' , layout='c')
+        powers.add_task("interp(u,         z={})".format(-0.49), name='u near bot' , layout='c')
+        powers.add_task("interp(u,         z={})".format(0.49), name='u near top' , layout='c')
         powers.add_task("interp(w,         z={})".format(0),    name='w midplane' , layout='c')
-        powers.add_task("interp(w,         z={})".format(-0.45), name='w near bot' , layout='c')
-        powers.add_task("interp(w,         z={})".format(0.45), name='w near top' , layout='c')
+        powers.add_task("interp(w,         z={})".format(-0.49), name='w near bot' , layout='c')
+        powers.add_task("interp(w,         z={})".format(0.49), name='w near top' , layout='c')
         for i in range(10):
             fraction = 0.1*i
             powers.add_task("interp(T1,     x={})".format(fraction*Lx), name='T at x=0.{}Lx'.format(i), layout='c')
