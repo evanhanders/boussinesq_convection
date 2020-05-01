@@ -244,7 +244,7 @@ if restart is None:
     T1.set_scales(domain.dealias)
     noise = global_noise(domain, int(args['--seed']))
     z_de = domain.grid(-1, scales=domain.dealias)
-    T1['g'] = 1e-6*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
+    T1['g'] = 1e-6*P*np.cos(np.pi*z_de)*noise['g']
     T1.differentiate('z', out=T1_z)
 
     dt = None

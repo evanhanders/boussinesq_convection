@@ -349,7 +349,7 @@ if restart is None and restart_T2m is None:
 
     #Add noise kick
     noise = global_noise(domain, int(args['--seed']))
-    T1['g'] += A0*P*np.cos(np.pi*z_de)*noise['g']*(0.5 - z_de)
+    T1['g'] += A0*P*np.cos(np.pi*z_de)*noise['g']
     T1.differentiate('z', out=T1_z)
 
 
