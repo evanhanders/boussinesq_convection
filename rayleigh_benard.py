@@ -33,8 +33,9 @@ Options:
     --run_time_therm=<time_>   Run time, in thermal times [default: 1]
 
     --restart=<file>           Restart from checkpoint file
-    --restart_T2m=<file>       Restart from checkpoint file, going from TT to FT BCs 
-    --restart_T2m_Nu=<Nu>      Nusselt number of fixed-T run being restarted from [default: 1]
+    --restart_Nu=<Nu>          Nusselt number of run that is being restarted, for adjusting t_ff [default: 1]
+    --TT_to_FT=<file>          Restart from checkpoint file, going from TT to FT BCs 
+    --TT_to_FT_Nu=<Nu>         Nusselt number of fixed-T run being restarted from [default: 1]
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
 
@@ -111,8 +112,8 @@ if args['--smart_ICs']:
 if args['--ae']:
     data_dir += '_AE'
 
-if args['--restart_T2m'] is not None:
-    data_dir += '_restartedT2m'
+if args['--TT_to_FT'] is not None:
+    data_dir += '_'
 
 if FS:
     data_dir += '_FS'
@@ -292,10 +293,10 @@ logger.info('Solver built')
 checkpoint = Checkpoint(data_dir)
 checkpoint_min = 30
 restart = args['--restart']
-restart_T2m = args['--restart_T2m']
+TT_to_FT = args['--TT_to_FT']
 not_corrected_times = True
 true_t_ff = 1
-if restart is None and restart_T2m is None:
+if restart is None and TT_to_FT is None:
     p = solver.state['p']
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
@@ -361,12 +362,12 @@ if restart is None and restart_T2m is None:
 
     dt = None
     mode = 'overwrite'
-elif restart_T2m is not None:
-    logger.info("restarting from {} and swapping BCs".format(restart_T2m))
-    dt = checkpoint.restart(restart_T2m, solver)
+elif TT_to_FT is not None:
+    logger.info("restarting from {} and swapping BCs".format(TT_to_FT))
+    dt = checkpoint.restart(TT_to_FT, solver)
     mode = 'overwrite'
 
-    Nu = float(args['--restart_T2m_Nu'])
+    Nu = float(args['--TT_to_FT_Nu'])
     true_t_ff   = np.sqrt(Nu)
             
     T1 = solver.state['T1']
@@ -392,6 +393,8 @@ else:
     dt = checkpoint.restart(restart, solver)
     mode = 'append'
     not_corrected_times = False
+    Nu = float(args['--restart_Nu'])
+    true_t_ff = np.sqrt(Nu)
 checkpoint.set_checkpoint(solver, wall_dt=checkpoint_min*60, mode=mode)
    
 
@@ -449,7 +452,7 @@ try:
     start_iter = solver.iteration
     start_time = time.time()
     avg_nu = avg_temp = avg_tz = 0
-    wait_time = float(args['--stat_wait_time'])
+    wait_time = float(args['--stat_wait_time'])*true_t_ff
     while (solver.ok and np.isfinite(Re_avg)) or first_step:
         if first_step: first_step = False
         if Re_avg > 1:
