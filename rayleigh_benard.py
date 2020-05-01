@@ -294,6 +294,7 @@ checkpoint_min = 30
 restart = args['--restart']
 restart_T2m = args['--restart_T2m']
 not_corrected_times = True
+true_t_ff = 1
 if restart is None and restart_T2m is None:
     p = solver.state['p']
     T1 = solver.state['T1']
@@ -321,8 +322,12 @@ if restart is None and restart_T2m is None:
             #Solve out for estimated delta T / BL depth from Nu v Ra.
             Nu_law_const  = 0.138
             Nu_law_alpha  = 0.285
-            dT_evolved = -1*(Nu_law_const*ra**(Nu_law_alpha))**(-1/(1+Nu_law_alpha))
-            d_BL = dT_evolved/(-2) #thermal BL depth
+            Nu_estimate   = Nu_law_const*ra**(Nu_law_alpha)
+
+            dT_evolved  = -1*(Nu_estimate)**(-1/(1+Nu_law_alpha))
+            d_BL        = dT_evolved/(-2) #thermal BL depth
+            true_t_ff   = np.sqrt(Nu_estimate)
+
 
             #Generate windowing function for boundary layers where dT/dz = -1
             window = one_to_zero(z_de, -0.5+2*d_BL, d_BL/2) + zero_to_one(z_de, 0.5-2*d_BL, d_BL/2) 
@@ -341,8 +346,9 @@ if restart is None and restart_T2m is None:
             work_field['g'] = T1['g'] 
             work_field.antidifferentiate(  'z', ('right', 0), out=p) #hydrostatic equilibrium
 
-            #Adjust magnitude of noise so effective A0 = 1.
-            A0 /= np.cos(np.pi*(-0.5+2*d_BL))
+            #Adjust magnitude of noise due to cos envelope & estimated magnitude of FT temperature fluctuations.
+            A0 /= np.cos(np.pi*(-0.5+2*d_BL)) 
+            A0 /= Nu_estimate
         else:
             logger.info("WARNING: Smart ICS not implemented for boundary condition choice.")
         
@@ -361,6 +367,7 @@ elif restart_T2m is not None:
     mode = 'overwrite'
 
     Nu = float(args['--restart_T2m_Nu'])
+    true_t_ff   = np.sqrt(Nu)
             
     T1 = solver.state['T1']
     u = solver.state['u']
@@ -379,6 +386,7 @@ elif restart_T2m is not None:
     for v in vels:
         v['g'] /= np.sqrt(Nu)
     not_corrected_times = False
+
 else:
     logger.info("restarting from {}".format(restart))
     dt = checkpoint.restart(restart, solver)
@@ -388,14 +396,14 @@ checkpoint.set_checkpoint(solver, wall_dt=checkpoint_min*60, mode=mode)
    
 
 ### 7. Set simulation stop parameters, output, and CFL
-if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy + solver.sim_time
+if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy*true_t_ff + solver.sim_time
 elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P + solver.sim_time
 else:                            solver.stop_sim_time = 1/P + solver.sim_time
 solver.stop_wall_time = run_time_wall*3600.
 
-max_dt    = 0.1
+max_dt    = 0.1*true_t_ff
 if dt is None: dt = max_dt
-analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, mode=mode, volumes=True)
+analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, output_dt=0.1*true_t_ff, slice_output_dt=1*true_t_ff, vol_output_dt=10*true_t_ff, mode=mode, volumes=True)
 
 # CFL
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
@@ -448,7 +456,7 @@ try:
             # Run times specified at command line are for convection, not for pre-transient.
             if not_corrected_times:
                 if run_time_buoy is not None:
-                    solver.stop_sim_time  = run_time_buoy + solver.sim_time
+                    solver.stop_sim_time  = true_t_ff*run_time_buoy + solver.sim_time
                 elif run_time_therm is not None:
                     solver.stop_sim_time = run_time_therm/P + solver.sim_time
                 not_corrected_times = False
@@ -499,7 +507,7 @@ try:
         if effective_iter % 10 == 0:
             Re_avg = flow.grid_average('Re')
             log_string =  'Iteration: {:5d}, '.format(solver.iteration)
-            log_string += 'Time: {:8.3e} ({:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time*P,  dt)
+            log_string += 'Time: {:8.3e} ({:8.3e} true_ff / {:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time/true_t_ff, solver.sim_time*P,  dt)
             log_string += 'Re: {:8.3e}/{:8.3e}, '.format(Re_avg, flow.max('Re'))
             log_string += 'KE: {:8.3e}/{:8.3e}, '.format(flow.grid_average('KE'), flow.max('KE'))
             log_string += 'Nu: {:8.3e} (av: {:8.3e}), '.format(flow.grid_average('Nu'), avg_nu)
