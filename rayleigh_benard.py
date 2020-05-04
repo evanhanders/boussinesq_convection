@@ -113,7 +113,7 @@ if args['--ae']:
     data_dir += '_AE'
 
 if args['--TT_to_FT'] is not None:
-    data_dir += '_'
+    data_dir += '_TTtoFT'
 
 if FS:
     data_dir += '_FS'
@@ -323,11 +323,13 @@ if restart is None and TT_to_FT is None:
             #Solve out for estimated delta T / BL depth from Nu v Ra.
             Nu_law_const  = 0.138
             Nu_law_alpha  = 0.285
-            Nu_estimate   = Nu_law_const*ra**(Nu_law_alpha)
+            Nu_estimate   = (Nu_law_const*ra**(Nu_law_alpha))**(1/(1+Nu_law_alpha))
 
-            dT_evolved  = -1*(Nu_estimate)**(-1/(1+Nu_law_alpha))
+            dT_evolved  = -1/(Nu_estimate)
             d_BL        = dT_evolved/(-2) #thermal BL depth
             true_t_ff   = np.sqrt(Nu_estimate)
+
+            logger.info('Constructing smart ICs with Nu: {:.2e} / t_ff: {:.2e}'.format(Nu_estimate, true_t_ff))
 
 
             #Generate windowing function for boundary layers where dT/dz = -1
@@ -404,7 +406,7 @@ elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P + solve
 else:                            solver.stop_sim_time = 1/P + solver.sim_time
 solver.stop_wall_time = run_time_wall*3600.
 
-max_dt    = 0.1*true_t_ff
+max_dt    = np.min((0.1*true_t_ff, 1))
 if dt is None: dt = max_dt
 analysis_tasks = initialize_output(solver, data_dir, aspect, threeD=threeD, output_dt=0.1*true_t_ff, slice_output_dt=1*true_t_ff, vol_output_dt=10*true_t_ff, mode=mode, volumes=True)
 
