@@ -21,9 +21,10 @@ Options:
     --ny=<nx>                  Horizontal resolution [default: 64]
     --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
-    --FF                       Fixed flux boundary conditions top/bottom (FF)
-    --TT                       Fixed temperature boundary conditions top/bottom (TT)
-    --NS                       No-slip boundary conditions top/bottom
+    --FF                       Fixed flux boundary conditions top/bottom (default FT)
+    --TT                       Fixed temperature boundary conditions top/bottom (default FT)
+    --NS                       Free-slip/stress free boundary conditions (default Free-slip, FS)
+    --smart_ICs                Use smarter static initial conditions for flux boundaries
 
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
     
@@ -32,6 +33,9 @@ Options:
     --run_time_therm=<time_>   Run time, in thermal times [default: 1]
 
     --restart=<file>           Restart from checkpoint file
+    --restart_Nu=<Nu>          Nusselt number of run that is being restarted, for adjusting t_ff [default: 1]
+    --TT_to_FT=<file>          Restart from checkpoint file, going from TT to FT BCs 
+    --TT_to_FT_Nu=<Nu>         Nusselt number of fixed-T run being restarted from [default: 1]
     --overwrite                If flagged, force file mode to overwrite
     --seed=<seed>              RNG seed for initial conditoins [default: 42]
 
@@ -40,6 +44,8 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.5]
+    --RK443                    Use RK443 instead of RK222
+
 
     --stat_wait_time=<t>       Time to wait before taking rolling averages of quantities like Nu [default: 20]
     --stat_window=<t_w>        Max time to take rolling averages over [default: 100]
@@ -92,9 +98,14 @@ elif TT:
 else:
     data_dir += '_FT'
 
+if args['--smart_ICs']:
+    data_dir += '_smart'
+
 if args['--ae']:
     data_dir += '_AE'
 
+if args['--TT_to_FT'] is not None:
+    data_dir += '_TTtoFT'
 
 if FS:
     data_dir += '_FS'
@@ -232,7 +243,10 @@ problem.add_bc("right(w) = 0", condition="(nx != 0) or  (ny != 0)")
 ### 5. Build solver
 # Note: SBDF2 timestepper does not currently work with AE.
 #ts = de.timesteppers.SBDF2
-ts = de.timesteppers.RK222
+if args['--RK443']:
+    ts = de.timesteppers.RK443
+else:
+    ts = de.timesteppers.RK222
 cfl_safety = float(args['--safety'])
 solver = problem.build_solver(ts)
 logger.info('Solver built')
@@ -242,33 +256,119 @@ logger.info('Solver built')
 checkpoint = Checkpoint(data_dir)
 checkpoint_min = 30
 restart = args['--restart']
-if restart is None:
+TT_to_FT = args['--TT_to_FT']
+not_corrected_times = True
+true_t_ff = 1
+if restart is None and TT_to_FT is None:
+    p = solver.state['p']
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
+    p.set_scales(domain.dealias)
     T1.set_scales(domain.dealias)
-    noise = global_noise(domain, int(args['--seed']))
+    T1_z.set_scales(domain.dealias)
     z_de = domain.grid(-1, scales=domain.dealias)
-    T1['g'] = 1e-6*P*np.cos(np.pi*z_de)*noise['g']
+
+    A0 = 1e-6
+
+    if args['--smart_ICs']:
+        from scipy.special import erf
+        def one_to_zero(z, z0, delta):
+            return -(1/2)*(erf( (z - z0) / delta ) - 1)
+        def zero_to_one(*args):
+            return 1-one_to_zero(*args)
+
+        # for some reason I run into filesystem errors when I just use T1 to antidifferentiate for HS for HSE
+        # use a work field instead.
+        work_field  = domain.new_field()
+        work_field.set_scales(domain.dealias)
+
+        if FT:
+            #Solve out for estimated delta T / BL depth from Nu v Ra.
+            Nu_law_const  = 0.138
+            Nu_law_alpha  = 0.285
+            Nu_estimate   = (Nu_law_const*ra**(Nu_law_alpha))**(1/(1+Nu_law_alpha))
+
+            dT_evolved  = -1/(Nu_estimate)
+            d_BL        = dT_evolved/(-2) #thermal BL depth
+            true_t_ff   = np.sqrt(Nu_estimate)
+
+            logger.info('Constructing smart ICs with Nu: {:.2e} / t_ff: {:.2e}'.format(Nu_estimate, true_t_ff))
+
+
+            #Generate windowing function for boundary layers where dT/dz = -1
+            window = one_to_zero(z_de, -0.5+2*d_BL, d_BL/2) + zero_to_one(z_de, 0.5-2*d_BL, d_BL/2) 
+            T1_z['g'] = window
+            w_integ   = np.mean(T1_z.integrate('z')['g'])
+
+            # dT/dz = (grad T)_interior + window*(-1 - (grad T)_interior)
+            # assuming (grad T)_interior is a constant, integ ( dT/dz ) = dT_evolved
+            # Rearrange for (grad T)_interior
+            grad_T_interior = (dT_evolved + w_integ) / (1 - w_integ)
+            T1_z['g'] = grad_T_interior + window*(-1 - grad_T_interior) # Full T field
+            T1_z['g'] -= (-1) #Subtract off T0z of constant coefficient.
+            T1_z.antidifferentiate('z', ('right', 0), out=T1)
+
+            #Hydrostatic equilibrium
+            work_field['g'] = T1['g'] 
+            work_field.antidifferentiate(  'z', ('right', 0), out=p) #hydrostatic equilibrium
+
+            #Adjust magnitude of noise due to cos envelope & estimated magnitude of FT temperature fluctuations.
+            A0 /= np.cos(np.pi*(-0.5+2*d_BL)) 
+            A0 /= Nu_estimate
+        else:
+            logger.info("WARNING: Smart ICS not implemented for boundary condition choice.")
+        
+
+    #Add noise kick
+    noise = global_noise(domain, int(args['--seed']))
+    T1['g'] += A0*P*np.cos(np.pi*z_de)*noise['g']
     T1.differentiate('z', out=T1_z)
 
     dt = None
     mode = 'overwrite'
+elif TT_to_FT is not None:
+    logger.info("restarting from {} and swapping BCs".format(TT_to_FT))
+    dt = checkpoint.restart(TT_to_FT, solver)
+    mode = 'overwrite'
+
+    Nu = float(args['--TT_to_FT_Nu'])
+    true_t_ff   = np.sqrt(Nu)
+            
+    T1 = solver.state['T1']
+    u = solver.state['u']
+    v = solver.state['v']
+    w = solver.state['w']
+    vels = [u, v, w]
+
+    #Adjust from fixed T to fixed flux
+    z_de = domain.grid(-1, scales=domain.dealias)
+    T1.set_scales(domain.dealias, keep_data=True)
+    T1['g'] += (0.5 - z_de) #Add T0
+    T1['g'] /= Nu        #Scale Temp flucs properly
+    T1['g'] -= (0.5 - z_de) #Subtract T0
+    for vel in vels:
+        vel['g'] /= np.sqrt(Nu)
+    not_corrected_times = False
+
 else:
     logger.info("restarting from {}".format(restart))
     dt = checkpoint.restart(restart, solver)
     mode = 'append'
+    not_corrected_times = False
+    Nu = float(args['--restart_Nu'])
+    true_t_ff = np.sqrt(Nu)
 checkpoint.set_checkpoint(solver, wall_dt=checkpoint_min*60, mode=mode)
    
 
 ### 7. Set simulation stop parameters, output, and CFL
-if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy
-elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P
-else:                            solver.stop_sim_time = 1/P
+if run_time_buoy is not None:    solver.stop_sim_time = run_time_buoy*true_t_ff + solver.sim_time
+elif run_time_therm is not None: solver.stop_sim_time = run_time_therm/P + solver.sim_time
+else:                            solver.stop_sim_time = 1/P + solver.sim_time
 solver.stop_wall_time = run_time_wall*3600.
 
-max_dt    = 0.25
+max_dt    = np.min((0.1*true_t_ff, 1))
 if dt is None: dt = max_dt
-analysis_tasks = initialize_rotating_output(solver, data_dir, aspect, mode=mode, slice_output_dt=0.25)
+analysis_tasks = initialize_rotating_output(solver, data_dir, aspect, output_dt=0.1*true_t_ff, slice_output_dt=1*true_t_ff, vol_output_dt=10*true_t_ff, mode=mode, volumes=True)
 
 # CFL
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
@@ -312,18 +412,18 @@ first_step = True
 try:
     count = Re_avg = 0
     logger.info('Starting loop')
-    not_corrected_times = True
     init_time = last_time = solver.sim_time
     start_iter = solver.iteration
     start_time = time.time()
     avg_nu = avg_temp = avg_tz = 0
+    wait_time = float(args['--stat_wait_time'])*true_t_ff
     while (solver.ok and np.isfinite(Re_avg)) or first_step:
         if first_step: first_step = False
         if Re_avg > 1:
             # Run times specified at command line are for convection, not for pre-transient.
             if not_corrected_times:
                 if run_time_buoy is not None:
-                    solver.stop_sim_time  = run_time_buoy + solver.sim_time
+                    solver.stop_sim_time  = true_t_ff*run_time_buoy + solver.sim_time
                 elif run_time_therm is not None:
                     solver.stop_sim_time = run_time_therm/P + solver.sim_time
                 not_corrected_times = False
@@ -344,7 +444,7 @@ try:
         if Re_avg > 1:
             # Rolling average logic 
             if last_time == init_time:
-                last_time = solver.sim_time + float(args['--stat_wait_time'])
+                last_time = solver.sim_time + wait_time 
             if solver.sim_time - last_time >= 0.2:
                 avg_Nu, avg_Ro, avg_T, Tz = flow.grid_average('Nu'), flow.grid_average('Ro'), flow.grid_average('T'), flow.grid_average('Tz_excess')
                 if domain.dist.comm_cart.rank == 0:
@@ -381,7 +481,7 @@ try:
         if effective_iter % 10 == 0:
             Re_avg = flow.grid_average('Re')
             log_string =  'Iteration: {:5d}, '.format(solver.iteration)
-            log_string += 'Time: {:8.3e} ({:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time*P,  dt)
+            log_string += 'Time: {:8.3e} ({:8.3e} true_ff / {:8.3e} therm), dt: {:8.3e}, '.format(solver.sim_time, solver.sim_time/true_t_ff, solver.sim_time*P,  dt)
             log_string += 'Re: {:8.3e}/{:8.3e}, '.format(Re_avg, flow.max('Re'))
             log_string += 'Ro: {:8.3e}/{:8.3e}, '.format(flow.grid_average('Ro'), flow.max('Ro'))
             log_string += 'true_Ro: {:8.3e}/{:8.3e}, '.format(flow.grid_average('true_Ro'), flow.max('true_Ro'))
