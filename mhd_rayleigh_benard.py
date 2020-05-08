@@ -185,7 +185,7 @@ problem.substitutions["Kx"] = "dy(Oz)-dz(Oy)"
 #Dimensionless parameter substitutions
 problem.substitutions["inv_Re_ff"]    = "(Pr/Ra)**(1./2.)"
 problem.substitutions["inv_Rem_ff"]   = "(inv_Re_ff / Pm)"
-problem.substitutions["JxB_pre"]      = "((Q*Pr)/(Ra*Pm))"
+problem.substitutions["M_alfven"]      = "sqrt((Ra*Pm)/(Q*Pr))"
 problem.substitutions["inv_Pe_ff"]    = "(Ra*Pr)**(-1./2.)"
 
 problem.substitutions['plane_avg(A)'] = 'integ(A, "x", "y")/Lx/Ly'
@@ -210,14 +210,16 @@ problem.substitutions['Ox']=0
 #problem.substitutions['Pe'] = '(vel_rms / P)'
 #problem.substitutions['Ro'] = 'sqrt(enstrophy)/(R/E)'
 #problem.substitutions['true_Ro'] = 'sqrt((v*Oz-w*Oy)**2+(w*Ox-u*Oz)**2+(u*Oy-v*Ox)**2)/(R/E*sqrt(v**2+u**2))'
+problem.substitutions['b_mag']='sqrt(Bx**2 + By**2 + Bz**2)
+problem.substitutions['b_perp']='sqrt(Bx**2 + By**2)
 #what is equivalent in magnetic case?
 
 ### 4.Setup equations and Boundary Conditions
 problem.add_equation("dt(T) + w*dzT0   - inv_Pe_ff*Lap(T, Tz)          = -UdotGrad(T, Tz)")
 
-problem.add_equation("dt(u)  + dx(p)   + inv_Re_ff*Kx - JxB_pre*Jy     = v*Oz - w*Oy + JxB_pre*(Jy*Bz - Jz*By)")
-problem.add_equation("dt(v)  + dy(p)   + inv_Re_ff*Ky + JxB_pre*Jx     = w*Ox - u*Oz + JxB_pre*(Jz*Bx - Jx*Bz) ")
-problem.add_equation("dt(w)  + dz(p)   + inv_Re_ff*Kz              - T = u*Oy - v*Oz + JxB_pre*(Jx*By - Jy*Bx) ")
+problem.add_equation("dt(u)  + dx(p)   + inv_Re_ff*Kx - (M_alfven**-2)*Jy     = v*Oz - w*Oy + (M_alfven**-2)*(Jy*Bz - Jz*By)")
+problem.add_equation("dt(v)  + dy(p)   + inv_Re_ff*Ky + (M_alfven**-2)*Jx     = w*Ox - u*Oz + (M_alfven**-2)*(Jz*Bx - Jx*Bz) ")
+problem.add_equation("dt(w)  + dz(p)   + inv_Re_ff*Kz              - T = u*Oy - v*Oz + (M_alfven**-2)*(Jx*By - Jy*Bx) ")
 
 problem.add_equation("dt(Ax) + dx(phi) + inv_Rem_ff*Jx - v             = v*Bz - w*By")
 problem.add_equation("dt(Ay) + dy(phi) + inv_Rem_ff*Jy + u             = w*Bx - u*Bz")
@@ -322,9 +324,11 @@ CFL.add_velocities(('u', 'v', 'w'))
 
 ### 8. Setup flow tracking for terminal output, including rolling averages
 flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
-flow.add_property("Re", name='Re')
-flow.add_property("Ro", name='Ro')
-flow.add_property("true_Ro", name='true_Ro')
+#flow.add_property("Re", name='Re')
+#flow.add_property("Ro", name='Ro')
+#flow.add_property("true_Ro", name='true_Ro')
+flow.add_property("b_mag", name="b_mag")
+flow.add_property("b_perp", name="b_perp")
 flow.add_property("vel_rms**2/2", name='KE')
 flow.add_property("Nu", name='Nu')
 flow.add_property("-1 + (left(T1_z) + right(T1_z) ) / 2", name='Tz_excess')
@@ -350,7 +354,7 @@ rank = domain.dist.comm_cart.rank
                                     #['T1', 'p', 'delta_T1'], P, R,
                                     #**kwargs)
 
-Hermitian_cadence = 100
+Hermitian_cadence = 0#100
 first_step = True
 # Main loop
 try:
