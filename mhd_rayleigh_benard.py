@@ -155,7 +155,7 @@ z_basis = de.Chebyshev('z', nz, interval = [-1./2, 1./2], dealias=3/2)
 bases = [x_basis, y_basis, z_basis]
 domain = de.Domain(bases, grid_dtype=np.float64, mesh=mesh)
 
-variables = ['T','Tz','p','u','v','w','phi','Ax','Ay','Az','Bx','By','Ox','Oy']
+variables = ['T','Tz','p','u','w','phi','Ax','Ay','Az','Bx','By','Oy']#,'v','Ox']
 problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
 #problem.parameters['P'] = P
@@ -203,7 +203,7 @@ problem.substitutions['vel_rms'] = 'sqrt(u**2 + v**2 + w**2)'
 #2.5d substitutions
 problem.substitutions['v']=0
 problem.substitutions['dy(A)']=0*dy(A)
-problem.substitutions['Oy']=0
+problem.substitutions['Oz']=0
 problem.substitutions['Ox']=0
 
 #problem.substitutions['Re'] = '(vel_rms / R)'

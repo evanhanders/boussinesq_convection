@@ -137,3 +137,19 @@ def initialize_rotating_output(*args, **kwargs):
     analysis_tasks['slices'].add_task("integ( Oz,          'z')",              name='vort_z integ')
 
     return analysis_tasks
+
+def initialize_magnetic_output(*args, **kwargs): #A or B here ?
+    analysis_tasks = initialize_output(*args, threeD=True, **kwargs)
+    analysis_tasks['scalar'].add_task("vol_avg(Ro)", name="Ro")
+    analysis_tasks['scalar'].add_task("vol_avg(true_Ro)", name="true_Ro")
+    analysis_tasks['scalar'].add_task("vol_avg(Ox)", name="Ox")
+    analysis_tasks['scalar'].add_task("vol_avg(Oy)", name="Oy")
+    analysis_tasks['scalar'].add_task("vol_avg(Oz)", name="Oz")
+
+
+    analysis_tasks['slices'].add_task("interp(Oz,         y={})".format(0),    name='vort_z')
+    analysis_tasks['slices'].add_task("interp(Oz,         z={})".format(0.45), name='vort_z near top')
+    analysis_tasks['slices'].add_task("interp(Oz,         z={})".format(0),    name='vort_z midplane')
+    analysis_tasks['slices'].add_task("integ( Oz,          'z')",              name='vort_z integ')
+
+    return analysis_tasks
