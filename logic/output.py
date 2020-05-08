@@ -44,10 +44,10 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
     scalar.add_task("vol_avg(Re)", name="Re")
     scalar.add_task("vol_avg(Pe)", name="Pe")
     scalar.add_task("vol_avg(enstrophy)", name="enstrophy")
-    scalar.add_task("vol_avg(-R*enstrophy)", name="visc_KE_source")
+    scalar.add_task("vol_avg(-inv_Re_ff*enstrophy)", name="visc_KE_source")
     scalar.add_task("vol_avg(w*T1)", name="buoy_KE_source")
     scalar.add_task("vol_avg(w*(T0+T1))", name="wT")
-    scalar.add_task("vol_avg(w*(T0+T1) - R*enstrophy)", name="KE_change")
+    scalar.add_task("vol_avg(w*(T0+T1) - inv_Re_ff*enstrophy)", name="KE_change")
     scalar.add_task("vol_avg(left(T0+T1) - right(T0+T1))", name="delta_T")
     scalar.add_task("vol_avg(left(T0+T1))", name="left_T")
     scalar.add_task("vol_avg(right(T0+T1))", name="right_T")
@@ -55,7 +55,7 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
     scalar.add_task("vol_avg(right(cond_flux))", name="right_flux")
     scalar.add_task("vol_avg(2*T1*dx(Oy))", name="enstrophy_buoy_source")
     scalar.add_task("vol_avg(w*dz(Oy**2) + u*dx(Oy**2))", name="enstrophy_advec_source")
-    scalar.add_task("vol_avg(-2*R*(dz(Oy)**2 + dx(Oy)**2))", name="enstrophy_visc_source")
+    scalar.add_task("vol_avg(-2*inv_Re_ff*(dz(Oy)**2 + dx(Oy)**2))", name="enstrophy_visc_source")
     scalar.add_task("vol_avg(u)",  name="u")
     scalar.add_task("vol_avg(w)",  name="w")
     analysis_tasks['scalar'] = scalar
@@ -99,9 +99,9 @@ def initialize_output(solver, data_dir, aspect, threeD=False, volumes=False,
         slices.add_task("w")
         slices.add_task("enth_flux")
         slices.add_task("enstrophy")
-        slices.add_task("2*T1*dx(Oy)",                  name="enstrophy_buoy_source")
-        slices.add_task("w*dz(Oy**2) + u*dx(Oy**2)",    name="enstrophy_advec_source")
-        slices.add_task("-2*R*(dz(Oy)**2 + dx(Oy)**2)", name="enstrophy_visc_source")
+        #slices.add_task("2*T1*dx(Oy)",                  name="enstrophy_buoy_source")
+        #slices.add_task("w*dz(Oy**2) + u*dx(Oy**2)",    name="enstrophy_advec_source")
+        #slices.add_task("-2*R*(dz(Oy)**2 + dx(Oy)**2)", name="enstrophy_visc_source")
         analysis_tasks['slices'] = slices
 
         powers = solver.evaluator.add_file_handler(data_dir+'powers', sim_dt=slice_output_dt, max_writes=max_writes*10, mode=mode)
@@ -139,17 +139,23 @@ def initialize_rotating_output(*args, **kwargs):
     return analysis_tasks
 
 def initialize_magnetic_output(*args, **kwargs): #A or B here ?
-    analysis_tasks = initialize_output(*args, threeD=True, **kwargs)
+    analysis_tasks = initialize_output(*args, **kwargs)
     analysis_tasks['scalar'].add_task("vol_avg(b_mag)", name="b_mag")
     analysis_tasks['scalar'].add_task("vol_avg(b_perp)", name="b_perp")
     analysis_tasks['scalar'].add_task("vol_avg(Bx)", name="Bx")
     analysis_tasks['scalar'].add_task("vol_avg(By)", name="By")
     analysis_tasks['scalar'].add_task("vol_avg(Bz)", name="Bz")
+    analysis_tasks['scalar'].add_task("sqrt(vol_avg(Bx**2))", name="Bx_rms")
+    analysis_tasks['scalar'].add_task("sqrt(vol_avg(By**2))", name="By_rms")
+    analysis_tasks['scalar'].add_task("sqrt(vol_avg(Bz**2))", name="Bz_rms")
 
-
-    analysis_tasks['slices'].add_task("interp(Bz,         y={})".format(0),    name='mag_field_z')
-    analysis_tasks['slices'].add_task("interp(Bz,         z={})".format(0.45), name='mag_field_z near top')
-    analysis_tasks['slices'].add_task("interp(Bz,         z={})".format(0),    name='mag_field_z midplane')
-    analysis_tasks['slices'].add_task("integ( Bz,          'z')",              name='mag_field_z integ')
-
+    if kwargs['threeD']:
+        analysis_tasks['slices'].add_task("interp(Bz,         y={})".format(0),    name='mag_field_z')
+        analysis_tasks['slices'].add_task("interp(Bz,         z={})".format(0.45), name='mag_field_z near top')
+        analysis_tasks['slices'].add_task("interp(Bz,         z={})".format(0),    name='mag_field_z midplane')
+        analysis_tasks['slices'].add_task("integ( Bz,          'z')",              name='mag_field_z integ')
+    else:
+        analysis_tasks['slices'].add_task("Bz")
+        analysis_tasks['slices'].add_task("By")
+        analysis_tasks['slices'].add_task("Bx")
     return analysis_tasks

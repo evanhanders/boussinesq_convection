@@ -72,13 +72,25 @@ if 'rotating' in root_dir:
     figRo.add_field(0, 'Ro')
     figRo.add_field(0, 'true_Ro')
 
-
-
+if 'mhd' in root_dir:
+    figb_mag = ScalarFigure(1, 1, col_in=6, fig_name='b_mag_trace')
+    figb_mag.add_field(0, 'b_mag')
+    figb_perp = ScalarFigure(1, 1, col_in=6, fig_name='b_perp_trace')
+    figb_perp.add_field(0, 'b_perp')
+    figb_comp = ScalarFigure(4, 1, col_in=6, fig_name='b_comp_trace')
+    figb_comp.add_field(0, 'Bx_rms')
+    figb_comp.add_field(0, 'By_rms')
+    figb_comp.add_field(0, 'Bz_rms')
+    figb_comp.add_field(1, 'Bx_rms')
+    figb_comp.add_field(2, 'By_rms')
+    figb_comp.add_field(3, 'Bz_rms')
 
 # Load in figures and make plots
 plotter = ScalarPlotter(root_dir, file_dir='scalar', fig_name=fig_name, start_file=start_file, n_files=n_files)
 figs = [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8]
 if 'rotating' in root_dir: figs.append(figRo)
+if 'mhd' in root_dir: figs+=[figb_mag , figb_perp, figb_comp]
 plotter.load_figures(figs)
 plotter.plot_figures(dpi=int(args['--dpi']))
 plotter.plot_convergence_figures(dpi=int(args['--dpi']))
+
