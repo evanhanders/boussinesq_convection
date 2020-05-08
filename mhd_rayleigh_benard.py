@@ -324,7 +324,7 @@ CFL.add_velocities(('u', 'v', 'w'))
 
 ### 8. Setup flow tracking for terminal output, including rolling averages
 flow = flow_tools.GlobalFlowProperty(solver, cadence=1)
-#flow.add_property("Re", name='Re')
+flow.add_property("Re", name='Re')
 #flow.add_property("Ro", name='Ro')
 #flow.add_property("true_Ro", name='true_Ro')
 flow.add_property("b_mag", name="b_mag")
@@ -354,7 +354,7 @@ rank = domain.dist.comm_cart.rank
                                     #['T1', 'p', 'delta_T1'], P, R,
                                     #**kwargs)
 
-Hermitian_cadence = 0#100
+#Hermitian_cadence = 100
 first_step = True
 # Main loop
 try:
@@ -385,9 +385,9 @@ try:
 
         # Solve for blow-up over long timescales in 3D due to hermitian-ness
         effective_iter = solver.iteration - start_iter
-        if effective_iter % Hermitian_cadence == 0:
-            for field in solver.state.fields:
-                field.require_grid_space()
+       # if effective_iter % Hermitian_cadence == 0:
+           #for field in solver.state.fields:
+                #field.require_grid_space()
         
         #if Re_avg > 1:
             # Rolling average logic 
