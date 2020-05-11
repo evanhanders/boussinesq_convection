@@ -93,12 +93,12 @@ class PdfPlotter(SingleFiletypePlotter):
 
         file_data = OrderedDict()
         for k in pdf_list: 
-            file_data[k] = np.zeros(tsk[k].shape)
+            file_data[k] = np.zeros(tsk[k].squeeze().shape)
             for i in range(file_data[k].shape[0]):
                 if self.reader.comm.rank == 0:
                     print('interpolating {} ({}/{})...'.format(k, i+1, file_data[k].shape[0]))
                     stdout.flush()
-                interp = RegularGridInterpolator((x.flatten(), y.flatten()), tsk[k][i,:], method='linear')
+                interp = RegularGridInterpolator((x.flatten(), y.flatten()), tsk[k][i,:].squeeze(), method='linear')
                 file_data[k][i,:] = interp((exx, eyy))
 
         return file_data

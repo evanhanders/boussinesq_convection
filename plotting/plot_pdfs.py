@@ -31,6 +31,16 @@ if '3D' in root_dir:
     bases  = ['x', 'y', 'z']
     pdfs_to_plot = ['T', 'wT']
     plotter = PdfPlotter(root_dir, file_dir='volumes', fig_name=fig_name, start_file=start_file, n_files=n_files)
+
+
+    bases_2  = ['x', 'y']
+    pdfs_to_plot2 = ['T near top', 'T near bot 1']
+    plotter2 = PdfPlotter(root_dir, file_dir='slices', fig_name=fig_name+'_xy', start_file=start_file, n_files=n_files)
+
+
+    bases_3  = ['x', 'z']
+    pdfs_to_plot3 = ['T']
+    plotter3 = PdfPlotter(root_dir, file_dir='slices', fig_name=fig_name+'_xz', start_file=start_file, n_files=n_files)
 else:
     threeD = False
     bases  = ['x', 'z']
@@ -40,3 +50,11 @@ else:
 
 plotter.calculate_pdfs(pdfs_to_plot, bins=int(args['--bins']), threeD=threeD, bases=bases, uneven_basis='z')
 plotter.plot_pdfs(dpi=int(args['--dpi']), row_in=5, col_in=8.5)
+
+if threeD:
+    for bases, plotter, pdfs_to_plot in zip([bases_2, bases_3], [plotter2, plotter3], [pdfs_to_plot2, pdfs_to_plot3]):
+        plotter.calculate_pdfs(pdfs_to_plot, bins=int(args['--bins']), threeD=False, bases=bases, uneven_basis='z')
+        plotter.plot_pdfs(dpi=int(args['--dpi']), row_in=5, col_in=8.5)
+
+
+
