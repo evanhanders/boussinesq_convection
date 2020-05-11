@@ -405,7 +405,7 @@ try:
     start_iter = solver.iteration
     start_time = time.time()
     #avg_nu = avg_temp = avg_T1_z = 0
-    while (solver.ok and np.isfinite(Re_avg)) or first_step:
+    while (solver.ok and np.isfinite(Re_avg)): #or first_step:
         #if first_step: first_step = False
         #if Re_avg > 1:
             # Run times specified at command line are for convection, not for pre-transient.
