@@ -129,6 +129,9 @@ class SlicePlotter(SingleFiletypePlotter):
                     for cm in self.colormeshes:
                         x = bs[cm.x_basis]
                         y = bs[cm.y_basis]
+                        if cm.x_basis == 'φ':
+                            x /= x.max()
+                            x *= 2*np.pi
                         cm.yy, cm.xx = np.meshgrid(y, x)
 
                 for j, n in enumerate(writenum):

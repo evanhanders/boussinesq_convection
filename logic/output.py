@@ -137,3 +137,58 @@ def initialize_rotating_output(*args, **kwargs):
     analysis_tasks['slices'].add_task("integ( Oz,          'z')",              name='vort_z integ')
 
     return analysis_tasks
+
+
+def initialize_output_annular(solver, data_dir, max_writes=20, output_dt=0.1, slice_output_dt=1, mode="overwrite", **kwargs):
+    """
+    Sets up output from runs.
+    """
+
+    # Analysis
+    analysis_tasks = OrderedDict()
+    profiles = solver.evaluator.add_file_handler(data_dir+'profiles', sim_dt=output_dt, max_writes=max_writes*10, mode=mode)
+    profiles.add_task("plane_avg(T1+T0)", name="T")
+    profiles.add_task("plane_avg(dr(T1+T0))", name="Tr")
+    profiles.add_task("plane_avg(T1)", name="T1")
+    profiles.add_task("plane_avg(ur)", name="ur")
+    profiles.add_task("plane_avg(uφ)", name="iφ")
+    profiles.add_task("plane_avg(enstrophy)", name="enstrophy")
+    profiles.add_task("plane_avg(Nu)", name="Nu")
+    profiles.add_task("plane_avg(Re)", name="Re")
+    profiles.add_task("plane_avg(Pe)", name="Pe")
+    profiles.add_task("plane_avg(enth_flux)", name="enth_flux")
+    profiles.add_task("plane_avg(cond_flux)", name="kappa_flux")
+    profiles.add_task("plane_avg(cond_flux + enth_flux)", name="tot_flux")
+
+    analysis_tasks['profiles'] = profiles
+
+    scalar = solver.evaluator.add_file_handler(data_dir+'scalar', sim_dt=output_dt, max_writes=max_writes*100, mode=mode)
+    scalar.add_task("vol_avg(T1)", name="IE")
+    scalar.add_task("vol_avg(0.5*vel_rms**2)", name="KE")
+    scalar.add_task("vol_avg(T1) + vol_avg(0.5*vel_rms**2)", name="TE")
+    scalar.add_task("vol_avg(Nu)", name="Nu")
+    scalar.add_task("vol_avg(Re)", name="Re")
+    scalar.add_task("vol_avg(Pe)", name="Pe")
+    scalar.add_task("vol_avg(enstrophy)", name="enstrophy")
+    scalar.add_task("vol_avg(left(T0+T1) - right(T0+T1))", name="delta_T")
+    scalar.add_task("vol_avg(left(T0+T1))", name="left_T")
+    scalar.add_task("vol_avg(right(T0+T1))", name="right_T")
+    scalar.add_task("vol_avg(left(cond_flux))", name="left_flux")
+    scalar.add_task("vol_avg(right(cond_flux))", name="right_flux")
+    scalar.add_task("vol_avg(ur)",  name="ur")
+    scalar.add_task("vol_avg(uφ)",  name="uφ")
+    analysis_tasks['scalar'] = scalar
+
+    # Analysis
+    slices = solver.evaluator.add_file_handler(data_dir+'slices', sim_dt=slice_output_dt, max_writes=max_writes, mode=mode)
+    slices.add_task("T1 + T0", name='T')
+    slices.add_task("T1 - plane_avg(T1)", name='T_anomaly')
+    slices.add_task("ur")
+    slices.add_task("uφ")
+    slices.add_task("enth_flux")
+    slices.add_task("enstrophy")
+    analysis_tasks['slices'] = slices
+
+    return analysis_tasks
+
+
