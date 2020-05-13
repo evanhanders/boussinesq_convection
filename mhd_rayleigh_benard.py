@@ -42,7 +42,7 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.5]
-    
+    --nocurrent               changes to conducting bc
     --2.5D                     changes to 2.5D
     
 
@@ -101,11 +101,17 @@ if FS:
 else:
     data_dir += '_NS'
 
+no_current = args['--nocurrent']
+
 threeD = not(args['--2.5D'])
 if threeD:
     data_dir+= "_3D"
 else:
     data_dir+="_2.5D"
+
+if no_current:
+    data_dir += '_nocurrent_bc'
+
 
 data_dir += "_Q{}_Ra{}_Pr{}_a{}".format(args['--Chandra'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
@@ -299,15 +305,25 @@ else:
     problem.add_bc("right(p) = 0", condition="(nx == 0)")
     problem.add_bc("right(w) = 0", condition="(nx != 0)")
     
-    
-problem.add_bc("left(dz(Ax)) = 0")
-problem.add_bc("left(dz(Ay)) = 0")
-problem.add_bc("left(Az) = 0")
-problem.add_bc("right(dz(Ax)) = 0")
-problem.add_bc("right(dz(Ay)) = 0")
+if no_current:
+    problem.add_bc(" left(dz(Jz)) = 0")
+    problem.add_bc(" left(Ax) = 0")
+    problem.add_bc(" left(Ay) = 0")
+    problem.add_bc("right(Ax) = 0")
+    problem.add_bc("right(Ay) = 0")
+else:
+    problem.add_bc("left(dz(Ax)) = 0")
+    problem.add_bc("left(dz(Ay)) = 0")
+    problem.add_bc("left(Az) = 0")
+    problem.add_bc("right(dz(Ax)) = 0")
+    problem.add_bc("right(dz(Ay)) = 0")
+
 if threeD:
     problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
     problem.add_bc("right(Az) = 0", condition="(nx != 0) or  (ny != 0)")
+if no_current:
+    problem.add_bc("right(phi) = 0", condition="(nx == 0)")
+    problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0)")
 else:
     problem.add_bc("right(phi) = 0", condition="(nx == 0)")
     problem.add_bc("right(Az) = 0", condition="(nx != 0)")
@@ -374,28 +390,10 @@ flow.add_property("Nu", name='Nu')
 #flow.add_property("-1 + (left(T1_z) + right(T1_z) ) / 2", name='T1_z_excess')
 #flow.add_property("T0+T1", name='T')
 
-#rank = domain.dist.comm_cart.rank
-#if rank == 0:
-    #nu_vals    = np.zeros(5*int(args['--stat_window']))
-    #ro_vals    = np.zeros(5*int(args['--stat_window']))
-    #T1_z_excess  = np.zeros(5*int(args['--stat_window']))
-    #temp_vals  = np.zeros(5*int(args['--stat_window']))
-    #dt_vals    = np.zeros(5*int(args['--stat_window']))
-    #writes     = 0
 
-
-### 9. Initialize Accelerated Evolution, if appropriate
-#if args['--ae']:
-    #kwargs = { 'first_ae_wait_time' : 30,
-              # 'first_ae_avg_time' : 20,
-              # 'first_ae_avg_thresh' : 1e-2 }
-    #ae_solver = BoussinesqAESolver( nz, solver, domain.dist,
-                                    #['tot_flux', 'enth_flux', 'momentum_rhs_z'],
-                                    #['T1', 'p', 'delta_T1'], P, R,
-                                    #**kwargs)
 if threeD:
     Hermitian_cadence = 100
-    #first_step = True
+    
 # Main loop
 try:
     Re_avg = 0
@@ -405,18 +403,7 @@ try:
     start_iter = solver.iteration
     start_time = time.time()
     #avg_nu = avg_temp = avg_T1_z = 0
-    while (solver.ok and np.isfinite(Re_avg)): #or first_step:
-        #if first_step: first_step = False
-        #if Re_avg > 1:
-            # Run times specified at command line are for convection, not for pre-transient.
-            #if not_corrected_times:
-                #if run_time_buoy is not None:
-                    #solver.stop_sim_time  = run_time_buoy + solver.sim_time
-                #elif run_time_therm is not None:
-                    #solver.stop_sim_time = run_time_therm/P + solver.sim_time
-                #not_corrected_times = False
-                
-
+    while (solver.ok and np.isfinite(Re_avg)):
 
 
         dt = CFL.compute_dt()
@@ -429,43 +416,7 @@ try:
             if effective_iter % Hermitian_cadence == 0:
                 for field in solver.state.fields:
                     field.require_grid_space()
-        
-        #if Re_avg > 1:
-            # Rolling average logic 
-            #if last_time == init_time:
-                #last_time = solver.sim_time + float(args['--stat_wait_time'])
-           # if solver.sim_time - last_time >= 0.2:
-                #avg_Nu, avg_Ro, avg_T, T1_z = flow.grid_average('Nu'), flow.grid_average('Ro'), flow.grid_average('T'), flow.grid_average('T1_z_excess')
-               # if domain.dist.comm_cart.rank == 0:
-                    #if writes != dt_vals.shape[0]:
-                        #dt_vals[writes] = solver.sim_time - last_time
-                        #nu_vals[writes] = avg_Nu
-                        #ro_vals[writes] = T1_z
-                        #temp_vals[writes] = avg_T
-                        #T1_z_excess[writes] = T1_z
-                        #writes += 1
-                   # else:
-                        #dt_vals[:-1] = dt_vals[1:]
-                        #nu_vals[:-1] = nu_vals[1:]
-                        #ro_vals[:-1] = ro_vals[1:]
-                        #temp_vals[:-1] = temp_vals[1:]
-                        #T1_z_excess[:-1] = T1_z_excess[1:]
-                        #dt_vals[-1] = solver.sim_time - last_time
-                        #nu_vals[-1] = avg_Nu
-                        #ro_vals[-1] = avg_Ro
-                        #temp_vals[-1] = avg_T
-                        #T1_z_excess[-1] = T1_z
-
-        
-                    #wait_time = 10
-                    #if np.sum(dt_vals) > wait_time:
-                        #avg_nu   = np.sum((dt_vals*nu_vals)[:writes])/np.sum(dt_vals[:writes])
-                        #avg_T1_z   = np.sum((dt_vals*T1_z_excess)[:writes])/np.sum(dt_vals[:writes])
-                        #avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
-                #last_time = solver.sim_time
-
-        #if args['--ae']:
-            #ae_solver.loop_tasks()
+    
                     
         if effective_iter % 10 == 0:
             Re_avg = flow.grid_average('Re')
