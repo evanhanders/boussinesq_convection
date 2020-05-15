@@ -172,7 +172,7 @@ else:
     bases = [x_basis, z_basis]
 domain = de.Domain(bases, grid_dtype=np.float64, mesh=mesh)
 
-variables = ['T1','T1_z','p','u','w','phi','Ax','Ay','Az','Bx','By','Oy']#,'v','Ox']
+variables = ['T1','T1_z','p','u','w','phi','Ax','Ay','Az','Bx','By','Oy']
 if threeD:
     variables+=['v','Ox']
 
@@ -311,22 +311,26 @@ if no_current:
     problem.add_bc(" left(Ay) = 0")
     problem.add_bc("right(Ax) = 0")
     problem.add_bc("right(Ay) = 0")
+    if threeD:
+        problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
+        problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0) or  (ny != 0)")
+    else:
+        problem.add_bc("right(phi) = 0", condition="(nx == 0)")
+        problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0)")
+
 else:
     problem.add_bc("left(dz(Ax)) = 0")
     problem.add_bc("left(dz(Ay)) = 0")
     problem.add_bc("left(Az) = 0")
     problem.add_bc("right(dz(Ax)) = 0")
     problem.add_bc("right(dz(Ay)) = 0")
+    if threeD:
+        problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
+        problem.add_bc("right(Az) = 0", condition="(nx != 0) or  (ny != 0)")
+    else:
+        problem.add_bc("right(phi) = 0", condition="(nx == 0)")
+        problem.add_bc("right(Az) = 0", condition="(nx != 0)")
 
-if threeD:
-    problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
-    problem.add_bc("right(Az) = 0", condition="(nx != 0) or  (ny != 0)")
-if no_current:
-    problem.add_bc("right(phi) = 0", condition="(nx == 0)")
-    problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0)")
-else:
-    problem.add_bc("right(phi) = 0", condition="(nx == 0)")
-    problem.add_bc("right(Az) = 0", condition="(nx != 0)")
 
 
 ### 5. Build solver
