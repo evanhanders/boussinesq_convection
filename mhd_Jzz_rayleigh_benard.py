@@ -172,7 +172,7 @@ else:
     bases = [x_basis, z_basis]
 domain = de.Domain(bases, grid_dtype=np.float64, mesh=mesh)
 
-variables = ['T1','T1_z','p','u','w','phi','Ax','Ay','Az','Bx','By','Oy']
+variables = ['T1','T1_z','p','u','w','Oy','Bx','By','Bz','Jz_z']
 if threeD:
     variables+=['v','Ox']
 
@@ -199,14 +199,14 @@ problem.substitutions['T0']   = '(-z + 0.5)'
 problem.substitutions['T0_z'] = '-1'
 problem.substitutions['Lap(A, A_z)']=       '(dx(dx(A)) + dy(dy(A)) + dz(A_z))'
 problem.substitutions['UdotGrad(A, A_z)'] = '(u*dx(A) + v*dy(A) + w*A_z)'
-problem.substitutions["Bz"] = "dx(Ay)-dy(Ax)"
+problem.substitutions['BdotGrad(A,A_z)'] = '(Bx*dx(A) + By*dy(A) + Bz*(A_z))'
 problem.substitutions["Jx"] = "dy(Bz)-dz(By)"
 problem.substitutions["Jy"] = "dz(Bx)-dx(Bz)"
 problem.substitutions["Jz"] = "dx(By)-dy(Bx)"
-problem.substitutions["Kz"] = "dx(Oy)-dy(Ox)"
 problem.substitutions["Oz"] = "dx(v)-dy(u)"
-problem.substitutions["Ky"] = "dz(Ox)-dx(Oz)"
 problem.substitutions["Kx"] = "dy(Oz)-dz(Oy)"
+problem.substitutions["Ky"] = "dz(Ox)-dx(Oz)"
+problem.substitutions["Kz"] = "dx(Oy)-dy(Ox)"
 
 #Dimensionless parameter substitutions
 problem.substitutions["inv_Re_ff"]    = "(Pr/Ra)**(1./2.)"
@@ -242,28 +242,38 @@ problem.substitutions['Pe'] = '(vel_rms / inv_Pe_ff)'
 problem.substitutions['b_mag']='sqrt(Bx**2 + By**2 + Bz**2)'
 problem.substitutions['b_perp']='sqrt(Bx**2 + By**2)'
 
+if threeD:
+    k0_condition     = "(nx == 0) and (ny == 0)"
+    kOther_condition = "(nx != 0) or  (ny != 0)"
+else:
+    k0_condition     = "(nx == 0)"
+    kOther_condition = "(nx != 0)"
+
 
 ### 4.Setup equations and Boundary Conditions
-problem.add_equation("dt(T1) + w*T0_z   - inv_Pe_ff*Lap(T1, T1_z)          = -UdotGrad(T1, T1_z)")
-
-problem.add_equation("dt(u)  + dx(p)   + inv_Re_ff*Kx - (M_alfven**-2)*Jy     = v*Oz - w*Oy + (M_alfven**-2)*(Jy*Bz - Jz*By)")
-if threeD:
-    problem.add_equation("dt(v)  + dy(p)   + inv_Re_ff*Ky + (M_alfven**-2)*Jx     = w*Ox - u*Oz + (M_alfven**-2)*(Jz*Bx - Jx*Bz) ")
-problem.add_equation("dt(w)  + dz(p)   + inv_Re_ff*Kz                     - T1 = u*Oy - v*Oz + (M_alfven**-2)*(Jx*By - Jy*Bx) ")
-
-problem.add_equation("dt(Ax) + dx(phi) + inv_Rem_ff*Jx - v             = v*Bz - w*By")
-problem.add_equation("dt(Ay) + dy(phi) + inv_Rem_ff*Jy + u             = w*Bx - u*Bz")
-problem.add_equation("dt(Az) + dz(phi) + inv_Rem_ff*Jz                 = u*By - v*Bx")
-
-problem.add_equation("dx(u)  + dy(v)  + dz(w)  = 0")
-problem.add_equation("dx(Ax) + dy(Ay) + dz(Az) = 0") #do I need dy here??
-
-problem.add_equation("Bx - (dy(Az) - dz(Ay)) = 0")
-problem.add_equation("By - (dz(Ax) - dx(Az)) = 0")
+# Equations assume that initial conditiosn of k = 0 mode of Bx, By, and Bz has no z-derivatives.
+problem.add_equation("T1_z - dz(T1) = 0")
+problem.add_equation("Jz_z - dz(Jz) = 0", condition=kOther_condition)
+problem.add_equation("Jz_z          = 0", condition=k0_condition)
+problem.add_equation("Oy - (dz(u) - dx(w)) = 0")
 if threeD:
     problem.add_equation("Ox - (dy(w) - dz(v)) = 0")
-problem.add_equation("Oy - (dz(u) - dx(w)) = 0")
-problem.add_equation("T1_z - dz(T1) = 0")
+
+problem.add_equation("dx(u)   + dy(v)  + dz(w)  = 0")
+problem.add_equation("dx(Bx)  + dy(By)  + dz(Bz)  = 0", condition=kOther_condition)
+problem.add_equation("Bz  = 0",                         condition=k0_condition)
+
+problem.add_equation("dt(T1) + w*T0_z   - inv_Pe_ff*Lap(T1, T1_z)          = -UdotGrad(T1, T1_z)")
+
+problem.add_equation("dt(u)  + dx(p)   + inv_Re_ff*Kx - (1/M_alfven**2)*Jy     = v*Oz - w*Oy + (1/M_alfven**2)*(Jy*Bz - Jz*By)")
+if threeD:
+    problem.add_equation("dt(v)  + dy(p)   + inv_Re_ff*Ky + (1/M_alfven**2)*Jx     = w*Ox - u*Oz + (1/M_alfven**2)*(Jz*Bx - Jx*Bz) ")
+problem.add_equation("dt(w)  + dz(p)   + inv_Re_ff*Kz              - T1 = u*Oy - v*Ox + (1/M_alfven**2)*(Jx*By - Jy*Bx) ")
+
+problem.add_equation("dt(Bz) + inv_Rem_ff*(dx(Jy) - dy(Jx))                    - dz(w)  = BdotGrad(w, dz(w)) - UdotGrad(Bz, dz(Bz))", condition=kOther_condition)
+problem.add_equation("dt(Jz) - inv_Rem_ff*(dx(dx(Jz)) + dy(dy(Jz)) + dz(Jz_z)) - dz(Oz) = -Lap(u*By - v*Bx, dz(u*By - v*Bx)) + dz(Bx*Ox + By*Oy + Bz*Oz) - dz(u*Jx + v*Jy + w*Jz)", condition=kOther_condition)
+problem.add_equation("By = 0", condition=k0_condition)
+problem.add_equation("Bx = 0", condition=k0_condition)
 
 
 
@@ -298,39 +308,19 @@ else:
 
 logger.info("Vertical velocity BC: impenetrable")
 problem.add_bc( "left(w) = 0")
-if threeD:
-    problem.add_bc("right(p) = 0", condition="(nx == 0) and (ny == 0)")
-    problem.add_bc("right(w) = 0", condition="(nx != 0) or  (ny != 0)")
-else:
-    problem.add_bc("right(p) = 0", condition="(nx == 0)")
-    problem.add_bc("right(w) = 0", condition="(nx != 0)")
+problem.add_bc("right(p) = 0", condition=k0_condition)
+problem.add_bc("right(w) = 0", condition=kOther_condition)
     
 if no_current:
-    problem.add_bc(" left(dz(Jz)) = 0")
-    problem.add_bc(" left(Ax) = 0")
-    problem.add_bc(" left(Ay) = 0")
-    problem.add_bc("right(Ax) = 0")
-    problem.add_bc("right(Ay) = 0")
-    if threeD:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
-        problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0) or  (ny != 0)")
-    else:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0)")
-        problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0)")
-
+    problem.add_bc(" left(dz(Jz)) = 0", condition=kOther_condition)
+    problem.add_bc(" left(Bz) = 0", condition=kOther_condition)
+    problem.add_bc("right(dz(Jz)) = 0", condition=kOther_condition)
+    problem.add_bc("right(Bz) = 0", condition=kOther_condition)
 else:
-    problem.add_bc("left(dz(Ax)) = 0")
-    problem.add_bc("left(dz(Ay)) = 0")
-    problem.add_bc("left(Az) = 0")
-    problem.add_bc("right(dz(Ax)) = 0")
-    problem.add_bc("right(dz(Ay)) = 0")
-    if threeD:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
-        problem.add_bc("right(Az) = 0", condition="(nx != 0) or  (ny != 0)")
-    else:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0)")
-        problem.add_bc("right(Az) = 0", condition="(nx != 0)")
-
+    problem.add_bc(" left(Bx) = 0", condition=kOther_condition)
+    problem.add_bc(" left(By) = 0", condition=kOther_condition)
+    problem.add_bc("right(Bx) = 0", condition=kOther_condition)
+    problem.add_bc("right(By) = 0", condition=kOther_condition)
 
 
 ### 5. Build solver
