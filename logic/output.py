@@ -148,6 +148,20 @@ def initialize_magnetic_output(*args, **kwargs): #A or B here ?
     analysis_tasks['scalar'].add_task("sqrt(vol_avg(Bx**2))", name="Bx_rms")
     analysis_tasks['scalar'].add_task("sqrt(vol_avg(By**2))", name="By_rms")
     analysis_tasks['scalar'].add_task("sqrt(vol_avg(Bz**2))", name="Bz_rms")
+    for fd in ['Bx', 'By', 'Jx', 'Jy']:
+        analysis_tasks['scalar'].add_task("vol_avg(right({}))".format(fd), name="right_{}".format(fd))
+        analysis_tasks['scalar'].add_task("vol_avg(left({}))".format(fd), name="left_{}".format(fd))
+
+
+    analysis_tasks['profiles'].add_task("right(Bx)")
+    analysis_tasks['profiles'].add_task("right(By)")
+    analysis_tasks['profiles'].add_task("right(Jx)")
+    analysis_tasks['profiles'].add_task("right(Jy)")
+    analysis_tasks['profiles'].add_task("left(Bx)")
+    analysis_tasks['profiles'].add_task("left(By)")
+    analysis_tasks['profiles'].add_task("left(Jx)")
+    analysis_tasks['profiles'].add_task("left(Jy)")
+        
 
     if kwargs['threeD']:
         analysis_tasks['slices'].add_task("interp(Bz,         y={})".format(0),    name='mag_field_z')

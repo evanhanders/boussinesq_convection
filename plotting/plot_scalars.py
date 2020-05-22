@@ -66,6 +66,21 @@ fig8.add_field(0, 'KE')
 fig8.add_field(1, 'visc_KE_source')
 fig8.add_field(2, 'buoy_KE_source')
 
+
+# boundary_currents 
+fig9 = ScalarFigure(2, 1, col_in=6, row_in=2.5, fig_name='boundary_currents')
+fig9.add_field(0, 'left_Jx')
+fig9.add_field(0, 'right_Jx')
+fig9.add_field(1, 'left_Jy')
+fig9.add_field(1, 'right_Jy')
+
+# boundary horizontal B 
+fig10 = ScalarFigure(2, 1, col_in=6, row_in=2.5, fig_name='boundary_b_horiz')
+fig10.add_field(0, 'left_Bx')
+fig10.add_field(0, 'right_Bx')
+fig10.add_field(1, 'left_By')
+fig10.add_field(1, 'right_By')
+
 # Re vs. time
 if 'rotating' in root_dir:
     figRo = ScalarFigure(1, 1, col_in=6, fig_name='ro_trace')
@@ -87,7 +102,7 @@ if 'mhd' in root_dir:
 
 # Load in figures and make plots
 plotter = ScalarPlotter(root_dir, file_dir='scalar', fig_name=fig_name, start_file=start_file, n_files=n_files)
-figs = [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8]
+figs = [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8, fig9, fig10]
 if 'rotating' in root_dir: figs.append(figRo)
 if 'mhd' in root_dir: figs+=[figb_mag , figb_perp, figb_comp]
 plotter.load_figures(figs)

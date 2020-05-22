@@ -40,6 +40,16 @@ plotter = ProfilePlotter(root_dir, file_dir='profiles', fig_name=fig_name, start
 
 if int(args['--fig_type']) == 1:
     fnames = [(('T',), {}), (('enth_flux',), {}), (('kappa_flux',), {}), (('tot_flux',), {}), (('enstrophy',), {}), (('u',), {})]
+elif int(args['--fig_type']) == 2:
+    fnames = [(('right(Jx)',), {'basis' :'x'}), 
+              (('right(Jy)',), {'basis' :'x'}),
+              (('right(Bx)',), {'basis' :'x'}),
+              (('right(By)',), {'basis' :'x'}),
+              (('left(Jx)',), {'basis' :'x'}),
+              (('left(Jy)',), {'basis' :'x'}),
+              (('left(Bx)',), {'basis' :'x'}),
+              (('left(By)',), {'basis' :'x'}),
+              ]
 
 for tup in fnames:
     plotter.add_colormesh(*tup[0], **tup[1])

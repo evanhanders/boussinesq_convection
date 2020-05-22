@@ -255,9 +255,11 @@ else:
 problem.add_equation("T1_z - dz(T1) = 0")
 problem.add_equation("Jz_z - dz(Jz) = 0", condition=kOther_condition)
 problem.add_equation("Jz_z          = 0", condition=k0_condition)
-problem.add_equation("Oy - (dz(u) - dx(w)) = 0")
+problem.add_equation("Oy - (dz(u) - dx(w)) = 0", condition=kOther_condition)
+problem.add_equation("Oy                   = 0", condition=k0_condition) 
 if threeD:
-    problem.add_equation("Ox - (dy(w) - dz(v)) = 0")
+    problem.add_equation("Ox - (dy(w) - dz(v)) = 0", condition=kOther_condition)
+    problem.add_equation("Ox                   = 0", condition=k0_condition)
 
 problem.add_equation("dx(u)   + dy(v)  + dz(w)  = 0")
 problem.add_equation("dx(Bx)  + dy(By)  + dz(Bz)  = 0", condition=kOther_condition)
@@ -265,9 +267,11 @@ problem.add_equation("Bz  = 0",                         condition=k0_condition)
 
 problem.add_equation("dt(T1) + w*T0_z   - inv_Pe_ff*Lap(T1, T1_z)          = -UdotGrad(T1, T1_z)")
 
-problem.add_equation("dt(u)  + dx(p)   + inv_Re_ff*Kx - (1/M_alfven**2)*Jy     = v*Oz - w*Oy + (1/M_alfven**2)*(Jy*Bz - Jz*By)")
-if threeD:
-    problem.add_equation("dt(v)  + dy(p)   + inv_Re_ff*Ky + (1/M_alfven**2)*Jx     = w*Ox - u*Oz + (1/M_alfven**2)*(Jz*Bx - Jx*Bz) ")
+problem.add_equation("dt(u)  + dx(p)   + inv_Re_ff*Kx - (1/M_alfven**2)*Jy     = v*Oz - w*Oy + (1/M_alfven**2)*(Jy*Bz - Jz*By)", condition=kOther_condition)
+problem.add_equation("u = 0", condition=k0_condition)
+if threeD:                                                                                                                     
+    problem.add_equation("dt(v)  + dy(p)   + inv_Re_ff*Ky + (1/M_alfven**2)*Jx     = w*Ox - u*Oz + (1/M_alfven**2)*(Jz*Bx - Jx*Bz) ", condition=kOther_condition)
+    problem.add_equation("v = 0", condition=k0_condition)
 problem.add_equation("dt(w)  + dz(p)   + inv_Re_ff*Kz              - T1 = u*Oy - v*Ox + (1/M_alfven**2)*(Jx*By - Jy*Bx) ")
 
 problem.add_equation("dt(Bz) + inv_Rem_ff*(dx(Jy) - dy(Jx))                    - dz(w)  = BdotGrad(w, dz(w)) - UdotGrad(Bz, dz(Bz))", condition=kOther_condition)
@@ -293,18 +297,18 @@ else:
 
 if FS:
     logger.info("Horizontal velocity BC: stress free/free-slip")
-    problem.add_bc( "left(Oy) = 0")
-    problem.add_bc("right(Oy) = 0")
+    problem.add_bc( "left(Oy) = 0", condition=kOther_condition)
+    problem.add_bc("right(Oy) = 0", condition=kOther_condition)
     if threeD:
-        problem.add_bc( "left(Ox) = 0")
-        problem.add_bc("right(Ox) = 0")
+        problem.add_bc( "left(Ox) = 0", condition=kOther_condition)
+        problem.add_bc("right(Ox) = 0", condition=kOther_condition)
 else:
     logger.info("Horizontal velocity BC: no slip")
-    problem.add_bc( "left(u) = 0")
-    problem.add_bc("right(u) = 0")
+    problem.add_bc( "left(u) = 0", condition=kOther_condition)
+    problem.add_bc("right(u) = 0", condition=kOther_condition)
     if threeD:
-        problem.add_bc( "left(v) = 0")
-        problem.add_bc("right(v) = 0")
+        problem.add_bc( "left(v) = 0", condition=kOther_condition)
+        problem.add_bc("right(v) = 0", condition=kOther_condition)
 
 logger.info("Vertical velocity BC: impenetrable")
 problem.add_bc( "left(w) = 0")
