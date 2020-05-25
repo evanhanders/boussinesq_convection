@@ -41,7 +41,7 @@ Options:
     --verbose                  Do verbose output (e.g., sparsity patterns of arrays)
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
-    --safety=<s>               CFL safety factor [default: 0.8]
+    --safety=<s>               CFL safety factor [default: 0.7]
     --nocurrent                changes to conducting bc
     --2.5D                     changes to 2.5D
 
@@ -301,37 +301,48 @@ else:
 logger.info("Vertical velocity BC: impenetrable")
 problem.add_bc( "left(w) = 0")
 if threeD:
-    problem.add_bc("right(p) = 0", condition="(nx == 0) and (ny == 0)")
-    problem.add_bc("right(w) = 0", condition="(nx != 0) or  (ny != 0)")
+    zero_cond = "(nx == 0) and (ny == 0)"
+    else_cond = "(nx != 0) or  (ny != 0)"
 else:
-    problem.add_bc("right(p) = 0", condition="(nx == 0)")
-    problem.add_bc("right(w) = 0", condition="(nx != 0)")
+    zero_cond = "(nx == 0)"
+    else_cond = "(nx != 0)"
+    
+problem.add_bc("right(p) = 0", condition=zero_cond)
+problem.add_bc("right(w) = 0", condition=else_cond)
     
 if no_current:
-    problem.add_bc(" left(dz(Jz)) = 0")
+    problem.add_bc(" left(dz(Jz)) = 0", condition=else_cond)
     problem.add_bc(" left(Ax) = 0")
     problem.add_bc(" left(Ay) = 0")
+    problem.add_bc("right(dz(Jz)) = 0", condition=else_cond)
     problem.add_bc("right(Ax) = 0")
     problem.add_bc("right(Ay) = 0")
-    if threeD:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
-        problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0) or  (ny != 0)")
-    else:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0)")
-        problem.add_bc("right(dz(Jz)) = 0", condition="(nx != 0)")
+    problem.add_bc("right(phi) = 0", condition=zero_cond)
+    problem.add_bc("left(Az) = 0",  condition=zero_cond)
+
+#   TODO: No current BCs are a WIP.
+#    problem.add_bc(" left(dz(Jz)) = 0", condition=else_cond)
+#    problem.add_bc(" left(Bz) = 0",     condition=else_cond)
+#    problem.add_bc(" left(Az) = 0")
+#    problem.add_bc("right(dz(Jz)) = 0", condition=else_cond)
+#    problem.add_bc("right(Bz) = 0",     condition=else_cond)
+#    problem.add_bc("right(phi) = 0", condition=zero_cond)
+#    problem.add_bc("right(Az) = 0",  condition=else_cond)
+#
+#    #Bz is automatically zero for the k = 0 mode, this is a good BC gauage choice there, esp. for no-slip.
+#    problem.add_bc(" left(Ax) = 0", condition=zero_cond)
+#    problem.add_bc(" left(Ay) = 0", condition=zero_cond)
+#    problem.add_bc("right(Ax) = 0", condition=zero_cond)
+#    problem.add_bc("right(Ay) = 0", condition=zero_cond)
 
 else:
-    problem.add_bc("left(dz(Ax)) = 0")
-    problem.add_bc("left(dz(Ay)) = 0")
-    problem.add_bc("left(Az) = 0")
-    problem.add_bc("right(dz(Ax)) = 0")
-    problem.add_bc("right(dz(Ay)) = 0")
-    if threeD:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0) and (ny == 0)")
-        problem.add_bc("right(Az) = 0", condition="(nx != 0) or  (ny != 0)")
-    else:
-        problem.add_bc("right(phi) = 0", condition="(nx == 0)")
-        problem.add_bc("right(Az) = 0", condition="(nx != 0)")
+    problem.add_bc(" left(Bx) = 0")
+    problem.add_bc(" left(By) = 0")
+    problem.add_bc(" left(Az) = 0")
+    problem.add_bc("right(Bx) = 0")
+    problem.add_bc("right(By) = 0")
+    problem.add_bc("right(phi) = 0", condition=zero_cond)
+    problem.add_bc("right(Az) = 0",  condition=else_cond)
 
 
 
