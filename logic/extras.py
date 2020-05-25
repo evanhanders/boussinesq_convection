@@ -45,7 +45,7 @@ def global_noise(domain, seed=42, n_modes=None, **kwargs):
         noise = rand.standard_normal(gshape)[slices]
 
         # filter in k-space
-        noise_field.set_scales(domain.dealias, keep_data=False)
+        noise_field.set_scales(1, keep_data=False)
         noise_field['g'] = noise
         filter_field(noise_field, **kwargs)
     else:
@@ -57,7 +57,8 @@ def global_noise(domain, seed=42, n_modes=None, **kwargs):
 
         noise_field.set_scales(scale, keep_data=False)
         noise_field['g'] = noise
-        noise_field.set_scales(domain.dealias, keep_data=True)
+
+    noise_field.set_scales(domain.dealias, keep_data=True)
         
     return noise_field
 
