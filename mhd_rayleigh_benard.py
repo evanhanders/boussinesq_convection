@@ -41,7 +41,7 @@ Options:
     --verbose                  Do verbose output (e.g., sparsity patterns of arrays)
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
-    --safety=<s>               CFL safety factor [default: 0.5]
+    --safety=<s>               CFL safety factor [default: 0.8]
     --nocurrent               changes to conducting bc
     --2.5D                     changes to 2.5D
     
@@ -336,7 +336,7 @@ else:
 ### 5. Build solver
 # Note: SBDF2 timestepper does not currently work with AE.
 #ts = de.timesteppers.SBDF2
-ts = de.timesteppers.RK222
+ts = de.timesteppers.RK443
 cfl_safety = float(args['--safety'])
 solver = problem.build_solver(ts)
 logger.info('Solver built')
