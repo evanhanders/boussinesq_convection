@@ -42,8 +42,10 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.8]
-    --nocurrent               changes to conducting bc
+    --nocurrent                changes to conducting bc
     --2.5D                     changes to 2.5D
+
+    --noise_modes=<N>          Number of wavenumbers to use in creating noise; for resolution testing
     
 
 """
@@ -350,7 +352,7 @@ if restart is None:
     T1 = solver.state['T1']
     T1_z = solver.state['T1_z']
     T1.set_scales(domain.dealias)
-    noise = global_noise(domain, int(args['--seed']))
+    noise = global_noise(domain, int(args['--seed']), n_modes=args['--noise_modes'])
     z_de = domain.grid(-1, scales=domain.dealias)
     T1['g'] = (1e-6*np.cos(np.pi*z_de)*noise['g'])/np.sqrt(Ra)
     T1.differentiate('z', out=T1_z)
