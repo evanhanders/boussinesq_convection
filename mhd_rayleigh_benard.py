@@ -18,9 +18,9 @@ Options:
     --Chandra=<Chandra>        Chandrasehkar number [default: 1]
     --MagneticPrandtl=<MagneticPrandtl>  Magnetic Prandtl number [default: 1]
     --Ekman=<Ekman>            Ekman number [default: 1e-2]
-    --nz=<nz>                  Vertical resolution [default: 32]
-    --nx=<nx>                  Horizontal resolution [default: 64]
-    --ny=<nx>                  Horizontal resolution [default: 64]
+    --nz=<nz>                  Vertical resolution [default: 128]
+    --nx=<nx>                  Horizontal resolution [default: 256]
+    --ny=<nx>                  Horizontal resolution [default: 256]
     --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
     --FF                       Fixed flux boundary conditions top/bottom (FF)
@@ -311,30 +311,19 @@ problem.add_bc("right(p) = 0", condition=zero_cond)
 problem.add_bc("right(w) = 0", condition=else_cond)
     
 if no_current:
-    problem.add_bc(" left(dz(Jz)) = 0", condition=else_cond)
-    problem.add_bc(" left(Ax) = 0")
-    problem.add_bc(" left(Ay) = 0")
-    problem.add_bc("right(dz(Jz)) = 0", condition=else_cond)
-    problem.add_bc("right(Ax) = 0")
-    problem.add_bc("right(Ay) = 0")
-    problem.add_bc("right(phi) = 0", condition=zero_cond)
-    problem.add_bc("left(Az) = 0",  condition=zero_cond)
-
-#   TODO: No current BCs are a WIP.
-#    problem.add_bc(" left(dz(Jz)) = 0", condition=else_cond)
-#    problem.add_bc(" left(Bz) = 0",     condition=else_cond)
-#    problem.add_bc(" left(Az) = 0")
-#    problem.add_bc("right(dz(Jz)) = 0", condition=else_cond)
-#    problem.add_bc("right(Bz) = 0",     condition=else_cond)
-#    problem.add_bc("right(phi) = 0", condition=zero_cond)
-#    problem.add_bc("right(Az) = 0",  condition=else_cond)
-#
-#    #Bz is automatically zero for the k = 0 mode, this is a good BC gauage choice there, esp. for no-slip.
-#    problem.add_bc(" left(Ax) = 0", condition=zero_cond)
-#    problem.add_bc(" left(Ay) = 0", condition=zero_cond)
-#    problem.add_bc("right(Ax) = 0", condition=zero_cond)
-#    problem.add_bc("right(Ay) = 0", condition=zero_cond)
-
+    if NS:
+        problem.add_bc(" left(Ax) = 0")
+        problem.add_bc(" left(Ay) = 0")
+        problem.add_bc(" left(Az) = 0")
+        problem.add_bc("right(Ax) = 0")
+        problem.add_bc("right(Ay) = 0")
+        problem.add_bc("right(Az) = 0",  condition=else_cond)
+        problem.add_bc("right(phi) = 0", condition=zero_cond)
+    else:
+        #TODO: Derive and implement conducting BCs for free-slip boundaries.
+        logger.error("Conducting boundary conditions currently not implemented for FS boundaries.")
+        import sys
+        sys.exit()
 else:
     problem.add_bc(" left(Bx) = 0")
     problem.add_bc(" left(By) = 0")
