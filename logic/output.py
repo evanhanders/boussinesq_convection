@@ -138,7 +138,7 @@ def initialize_rotating_output(*args, **kwargs):
 
     return analysis_tasks
 
-def initialize_magnetic_output(*args, **kwargs): #A or B here ?
+def initialize_magnetic_output(*args, plot_boundaries=True, **kwargs): #A or B here ?
     analysis_tasks = initialize_output(*args, **kwargs)
     analysis_tasks['scalar'].add_task("vol_avg(b_mag)", name="b_mag")
     analysis_tasks['scalar'].add_task("vol_avg(b_perp)", name="b_perp")
@@ -153,23 +153,38 @@ def initialize_magnetic_output(*args, **kwargs): #A or B here ?
         analysis_tasks['scalar'].add_task("vol_avg(left({}))".format(fd), name="left_{}".format(fd))
 
 
-    analysis_tasks['profiles'].add_task("right(Bx)")
-    analysis_tasks['profiles'].add_task("right(By)")
-    analysis_tasks['profiles'].add_task("right(Jx)")
-    analysis_tasks['profiles'].add_task("right(Jy)")
-    analysis_tasks['profiles'].add_task("left(Bx)")
-    analysis_tasks['profiles'].add_task("left(By)")
-    analysis_tasks['profiles'].add_task("left(Jx)")
-    analysis_tasks['profiles'].add_task("left(Jy)")
-        
+       
 
     if kwargs['threeD']:
+        boundary_type = 'slices'
         analysis_tasks['slices'].add_task("interp(Bz,         y={})".format(0),    name='mag_field_z')
         analysis_tasks['slices'].add_task("interp(Bz,         z={})".format(0.45), name='mag_field_z near top')
         analysis_tasks['slices'].add_task("interp(Bz,         z={})".format(0),    name='mag_field_z midplane')
         analysis_tasks['slices'].add_task("integ( Bz,          'z')",              name='mag_field_z integ')
     else:
+        boundary_type = 'profiles'
         analysis_tasks['slices'].add_task("Bz")
         analysis_tasks['slices'].add_task("By")
         analysis_tasks['slices'].add_task("Bx")
+
+    if plot_boundaries:
+        analysis_tasks[boundary_type].add_task("right(Bx)")
+        analysis_tasks[boundary_type].add_task("right(By)")
+        analysis_tasks[boundary_type].add_task("right(Bz)")
+        analysis_tasks[boundary_type].add_task("right(Jx)")
+        analysis_tasks[boundary_type].add_task("right(Jy)")
+        analysis_tasks[boundary_type].add_task("right(Jz)")
+        analysis_tasks[boundary_type].add_task("right(Ex)")
+        analysis_tasks[boundary_type].add_task("right(Ey)")
+        analysis_tasks[boundary_type].add_task("right(Ez)")
+        analysis_tasks[boundary_type].add_task("left(Bx)")
+        analysis_tasks[boundary_type].add_task("left(By)")
+        analysis_tasks[boundary_type].add_task("left(Bz)")
+        analysis_tasks[boundary_type].add_task("left(Jx)")
+        analysis_tasks[boundary_type].add_task("left(Jy)")
+        analysis_tasks[boundary_type].add_task("left(Jz)")
+        analysis_tasks[boundary_type].add_task("left(Ex)")
+        analysis_tasks[boundary_type].add_task("left(Ey)")
+        analysis_tasks[boundary_type].add_task("left(Ez)")
+ 
     return analysis_tasks

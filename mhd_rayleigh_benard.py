@@ -26,6 +26,7 @@ Options:
     --FF                       Fixed flux boundary conditions top/bottom (FF)
     --FT                       Fixed flux boundary conditions at bottom fixed temp at top (TT)
     --NS                       No-slip boundary conditions top/bottom
+    --conducting               changes to conducting bc
 
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
     
@@ -42,7 +43,6 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.7]
-    --nocurrent                changes to conducting bc
     --2.5D                     changes to 2.5D
 
     --noise_modes=<N>          Number of wavenumbers to use in creating noise; for resolution testing
@@ -103,7 +103,7 @@ if FS:
 else:
     data_dir += '_NS'
 
-no_current = args['--nocurrent']
+no_current = args['--conducting']
 
 threeD = not(args['--2.5D'])
 if threeD:
@@ -112,7 +112,7 @@ else:
     data_dir+="_2.5D"
 
 if no_current:
-    data_dir += '_nocurrent_bc'
+    data_dir += '_conducting'
 
 
 data_dir += "_Q{}_Ra{}_Pr{}_a{}".format(args['--Chandra'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
@@ -234,6 +234,10 @@ problem.substitutions['Nu'] = '((enth_flux + cond_flux)/vol_avg(cond_flux))'
 problem.substitutions['delta_T'] = '(left(T1+T0)-right(T1+T0))'
 problem.substitutions['vel_rms'] = 'sqrt(u**2 + v**2 + w**2)'
 
+problem.substitutions['Ex'] = 'dx(phi) + inv_Rem_ff*Jx + w*By - v*(1 + Bz)'
+problem.substitutions['Ey'] = 'dy(phi) + inv_Rem_ff*Jy + u*(1 + Bz) - w*Bx'
+problem.substitutions['Ez'] = 'dz(phi) + inv_Rem_ff*Jz + v*Bx - u*By'
+
 
 
 
@@ -311,27 +315,29 @@ problem.add_bc("right(p) = 0", condition=zero_cond)
 problem.add_bc("right(w) = 0", condition=else_cond)
     
 if no_current:
-    if NS:
-        problem.add_bc(" left(Ax) = 0")
-        problem.add_bc(" left(Ay) = 0")
-        problem.add_bc(" left(Az) = 0")
-        problem.add_bc("right(Ax) = 0")
-        problem.add_bc("right(Ay) = 0")
-        problem.add_bc("right(Az) = 0",  condition=else_cond)
-        problem.add_bc("right(phi) = 0", condition=zero_cond)
-    else:
-        #TODO: Derive and implement conducting BCs for free-slip boundaries.
-        logger.error("Conducting boundary conditions currently not implemented for FS boundaries.")
-        import sys
-        sys.exit()
+    problem.add_bc(" left(Ax) = 0")
+    problem.add_bc("right(Ax) = 0")
+    problem.add_bc(" left(Ay) = 0")
+    problem.add_bc("right(Ay) = 0")
 else:
-    problem.add_bc(" left(Bx) = 0")
-    problem.add_bc(" left(By) = 0")
-    problem.add_bc(" left(Az) = 0")
-    problem.add_bc("right(Bx) = 0")
-    problem.add_bc("right(By) = 0")
-    problem.add_bc("right(phi) = 0", condition=zero_cond)
-    problem.add_bc("right(Az) = 0",  condition=else_cond)
+    problem.add_bc(" left(Bx) = 0", condition=else_cond)
+    problem.add_bc("right(Bx) = 0", condition=else_cond)
+    problem.add_bc(" left(By) = 0", condition=else_cond)
+    problem.add_bc("right(By) = 0", condition=else_cond)
+
+    # k = 0 mode needs some love (near-singular in EVPs)
+    # TODO: improve this choice?
+    problem.add_bc(" left(Ax) = 0", condition=zero_cond)
+    problem.add_bc(" left(Ay) = 0", condition=zero_cond)
+    problem.add_bc("right(Ax) = 0", condition=zero_cond)
+    problem.add_bc("right(Ay) = 0", condition=zero_cond)
+
+# Extra BC because vector potential
+problem.add_bc(" left(Az) = 0")
+problem.add_bc("right(phi) = 0", condition=zero_cond) #Coulomb gauge
+problem.add_bc("right(Az) = 0",  condition=else_cond)
+
+
 
 
 
@@ -374,7 +380,7 @@ solver.stop_wall_time = run_time_wall*3600.
 
 max_dt    = 0.25
 if dt is None: dt = max_dt
-analysis_tasks = initialize_magnetic_output(solver, data_dir, aspect, threeD=threeD, mode=mode, slice_output_dt=0.25)
+analysis_tasks = initialize_magnetic_output(solver, data_dir, aspect, plot_boundaries=False, threeD=threeD, mode=mode, slice_output_dt=0.25)
 
 # CFL
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=1, safety=cfl_safety,
