@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__.split('.')[-1])
 class PdfPlotter(SingleFiletypePlotter):
     """
     A class for plotting probability distributions of a dedalus output.
-    PDF plots are currently only implemented for 2D slices. When one axis is
+    PDF plots are currently implemented for 2D slices and 3D volumes. When one axis is
     represented by polynomials that exist on an uneven basis (e.g., Chebyshev),
     that basis is evenly interpolated to avoid skewing of the distribution by
     uneven grid sampling.
@@ -65,7 +65,7 @@ class PdfPlotter(SingleFiletypePlotter):
     
     def _get_interpolated_slices(self, file_name, pdf_list, bases=['x', 'z'], uneven_basis=None):
         """
-        For data on an uneven grid, interpolates that data on to an evenly spaced grid.
+        For 2D data on an uneven grid, interpolates that data on to an evenly spaced grid.
 
         Attributes:
         ----------
@@ -93,16 +93,87 @@ class PdfPlotter(SingleFiletypePlotter):
 
         file_data = OrderedDict()
         for k in pdf_list: 
+            shape = tsk[k].squeeze().shape
+            if len(shape) == 2:
+                file_data[k] = np.zeros((1, *tsk[k].squeeze().shape))
+            else:
+                file_data[k] = np.zeros(tsk[k].squeeze().shape)
+            for i in range(file_data[k].shape[0]):
+                if self.reader.comm.rank == 0:
+                    print('interpolating {} ({}/{})...'.format(k, i+1, file_data[k].shape[0]))
+                    stdout.flush()
+                interp = RegularGridInterpolator((x.flatten(), y.flatten()), tsk[k][i,:].squeeze(), method='linear')
+                file_data[k][i,:] = interp((exx, eyy))
+
+        return file_data
+
+    def _get_interpolated_volumes(self, file_name, pdf_list, bases=['x', 'y', 'z'], uneven_basis=None):
+        """
+        For 3D data on an uneven grid, interpolates that data on to an evenly spaced grid.
+
+        Attributes:
+        ----------
+        pdf_list : list
+            list of strings of the Dedalus tasks to make PDFs of.
+        bases : list, optional
+            The names of the Dedalus bases on which the data exists
+        uneven_basis : string, optional
+            The basis on which the grid has uneven spacing.
+        """
+        #Read data
+        bs, tsk, writenum, times = self.reader.read_file(file_name, bases=bases, tasks=pdf_list)
+
+        # Put data on an even grid
+        x, y, z = bs[bases[0]], bs[bases[1]], bs[bases[2]]
+        dedalus_bases = (x, y, z)
+        uneven_index  = None
+        if bases[0] == uneven_basis:
+            even_x = np.linspace(x.min(), x.max(), len(x))
+            even_y = y
+            even_z = z
+            uneven_index = 0
+        elif bases[1] == uneven_basis:
+            even_x = x
+            even_y = np.linspace(y.min(), y.max(), len(y))
+            even_z = z
+            uneven_index = 1
+        elif bases[2] == uneven_basis:
+            even_x = x
+            even_y = y
+            even_z = np.linspace(z.min(), z.max(), len(z))
+            uneven_index = 2
+        else:
+            even_x, even_y, even_z = x, y, z
+
+        exx, eyy, ezz = None, None, None
+        if uneven_index == 0:
+            eyy, exx = np.meshgrid(even_y, even_x)
+        elif uneven_index == 1:
+            eyy, exx = np.meshgrid(even_y, even_x)
+        elif uneven_index == 2:
+            ezz, exx = np.meshgrid(even_z, even_x)
+
+        file_data = OrderedDict()
+        for k in pdf_list: 
             file_data[k] = np.zeros(tsk[k].shape)
             for i in range(file_data[k].shape[0]):
                 if self.reader.comm.rank == 0:
                     print('interpolating {} ({}/{})...'.format(k, i+1, file_data[k].shape[0]))
                     stdout.flush()
-                interp = RegularGridInterpolator((x.flatten(), y.flatten()), tsk[k][i,:], method='linear')
-                file_data[k][i,:] = interp((exx, eyy))
-
+                if uneven_index is None:
+                    file_data[k][i,:] = tsk[k][i,:]
+                elif uneven_index == 2:
+                    for j in range(file_data[k].shape[-2]): # loop over y
+                        interp = RegularGridInterpolator((x.flatten(), z.flatten()), tsk[k][i,:,j,:], method='linear')
+                        file_data[k][i,:,j,:] = interp((exx, ezz))
+                else:
+                    for j in range(file_data[k].shape[-1]): # loop over z
+                        interp = RegularGridInterpolator((x.flatten(), y.flatten()), tsk[k][i,:,:,j], method='linear')
+                        file_data[k][i,:,:,j] = interp((exx, eyy))
 
         return file_data
+
+
 
     def _get_bounds(self, pdf_list):
         """
@@ -137,7 +208,7 @@ class PdfPlotter(SingleFiletypePlotter):
             return bounds
 
 
-    def calculate_pdfs(self, pdf_list, bins=100, **kwargs):
+    def calculate_pdfs(self, pdf_list, bins=100, threeD=False, **kwargs):
         """
         Calculate probability distribution functions of the specified tasks.
 
@@ -164,7 +235,10 @@ class PdfPlotter(SingleFiletypePlotter):
                 if self.reader.comm.rank == 0:
                     print('reading file {}/{}...'.format(i+1, len(self.files)))
                     stdout.flush()
-                file_data = self._get_interpolated_slices(f, pdf_list, **kwargs)
+                if threeD:
+                    file_data = self._get_interpolated_volumes(f, pdf_list, **kwargs)
+                else:
+                    file_data = self._get_interpolated_slices(f, pdf_list, **kwargs)
 
                 # Create histograms of data
                 for field in pdf_list:

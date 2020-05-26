@@ -17,7 +17,8 @@ Options:
     --row_inch=<in>                     Number of inches / row [default: 3]
 
     --fig_type=<fig_type>               Type of figure to plot
-                                            1 - T (y = 0, near top, midplane)
+                                            1 - T & vort (y = 0, near top, midplane)
+                                            2 - T (y = 0, near top, midplane)
                                         [default: 1]
 """
 from docopt import docopt
@@ -46,7 +47,18 @@ plotter_kwargs = { 'col_in' : int(args['--col_inch']), 'row_in' : int(args['--ro
 if int(args['--fig_type']) == 1:
     plotter.setup_grid(2, 3, **plotter_kwargs)
     plotter.grid.full_row_ax(0)
-    fnames = [(('T',), {'remove_x_mean' : True}), (('T near top',), {'remove_mean':True, 'y_basis':'y'}), (('T midplane',), {'remove_mean':True, 'y_basis':'y'}), (('vort_z integ',), {'y_basis':'y'})]
+    fnames = [(('T',), {'remove_x_mean' : True}), 
+              (('T near top',), {'remove_mean':True, 'y_basis':'y'}), 
+              (('T midplane',), {'remove_mean':True, 'y_basis':'y'}), 
+              (('vort_z integ',), {'y_basis':'y'})]
+elif int(args['--fig_type']) == 2:
+    plotter.setup_grid(2, 3, **plotter_kwargs)
+    plotter.grid.full_row_ax(0)
+    fnames = [(('T',), {'remove_x_mean' : True}), 
+              (('T near top',), {'remove_mean':True, 'y_basis':'y'}), 
+              (('T near bot 1',), {'remove_mean':True, 'y_basis':'y'}), 
+              (('T midplane',), {'remove_mean':True, 'y_basis':'y'})]
+
 
 
 

@@ -136,6 +136,11 @@ def initialize_rotating_output(*args, **kwargs):
     analysis_tasks['slices'].add_task("interp(Oz,         z={})".format(0),    name='vort_z midplane')
     analysis_tasks['slices'].add_task("integ( Oz,          'z')",              name='vort_z integ')
 
+    if 'volumes' in analysis_tasks.keys():
+        analysis_tasks['volumes'].add_task('Oz', name='z_vorticity')
+        analysis_tasks['volumes'].add_task('w', name='w')
+        analysis_tasks['volumes'].add_task('u', name='u')
+
     return analysis_tasks
 
 def initialize_magnetic_output(*args, plot_boundaries=True, **kwargs): #A or B here ?
