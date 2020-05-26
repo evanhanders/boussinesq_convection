@@ -13,12 +13,14 @@ Options:
     --static_cbar                       If flagged, don't evolve the cbar with time
     --dpi=<dpi>                         Image pixel density [default: 200]
 
-    --col_inch=<in>                     Number of inches / column [default: 6]
-    --row_inch=<in>                     Number of inches / row [default: 3]
+    --col_inch=<in>                     Number of inches / column [default: 4]
+    --row_inch=<in>                     Number of inches / row [default: 2]
 
     --fig_type=<fig_type>               Type of figure to plot
-                                            1 - T, enstrophy 
+                                            1 - T, enstrophy
+                                            2 - T, enstrophy, Bz
                                         [default: 1]
+                                        
 """
 from docopt import docopt
 args = docopt(__doc__)
@@ -47,6 +49,10 @@ if int(args['--fig_type']) == 1:
     plotter.setup_grid(2, 1, **plotter_kwargs)
     fnames = [  (('T',), {'remove_x_mean' : True}), 
                 (('enstrophy',), {'cmap':'Purples_r', 'pos_def' : True})    ]
+elif int(args['--fig_type']) == 2:
+    plotter.setup_grid(3, 1, **plotter_kwargs)
+    fnames = [  (('T',), {'remove_x_mean' : True}),
+            (('enstrophy',), {'cmap':'Purples_r', 'pos_def' : True}), (('Bz',), {'remove_x_mean' : False})    ]
 
 for tup in fnames:
     plotter.add_colormesh(*tup[0], **tup[1])
