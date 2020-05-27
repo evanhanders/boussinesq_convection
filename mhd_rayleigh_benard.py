@@ -325,17 +325,10 @@ if no_current:
     problem.add_bc("right(phi) = 0", condition=else_cond)
     problem.add_bc("right(Az) = 0",  condition=zero_cond)
 else:
-    problem.add_bc(" left(Bx) = 0", condition=else_cond)
-    problem.add_bc("right(Bx) = 0", condition=else_cond)
-    problem.add_bc(" left(By) = 0", condition=else_cond)
-    problem.add_bc("right(By) = 0", condition=else_cond)
-
-    # k = 0 mode needs some love (near-singular in EVPs)
-    # TODO: improve this choice?
-    problem.add_bc(" left(Ax) = 0", condition=zero_cond)
-    problem.add_bc(" left(Ay) = 0", condition=zero_cond)
-    problem.add_bc("right(Ax) = 0", condition=zero_cond)
-    problem.add_bc("right(Ay) = 0", condition=zero_cond)
+    problem.add_bc(" left(Bx) = 0")
+    problem.add_bc("right(Bx) = 0")
+    problem.add_bc(" left(By) = 0")
+    problem.add_bc("right(By) = 0")
 
     # Extra BC because vector potential
     problem.add_bc(" left(Az) = 0")
