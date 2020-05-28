@@ -13,20 +13,21 @@ Usage:
     mhd_rayleigh_benard.py [options]
 
 Options:
-    --Rayleigh=<Rayleigh>      Rayleigh number [default: 1e5]
-    --Prandtl=<Prandtl>        Prandtl number = nu/kappa [default: 1]
-    --Chandra=<Chandra>        Chandrasehkar number [default: 1]
-    --MagneticPrandtl=<MagneticPrandtl>  Magnetic Prandtl number [default: 1]
-    --Ekman=<Ekman>            Ekman number [default: 1e-2]
+    --Ra=<Rayleigh>            The Rayleigh number [default: 1e5]
+    --Pr=<Prandtl>             The Prandtl number [default: 1]
+    --Q=<Chandra>              The Chandrasehkar number [default: 1]
+    --Pm=<MagneticPrandtl>     The Magnetic Prandtl number [default: 1]
+    --a=<aspect>               Aspect ratio of problem [default: 2]
+    --2.5D                     changes to 2.5D
+
     --nz=<nz>                  Vertical resolution [default: 128]
     --nx=<nx>                  Horizontal resolution [default: 256]
     --ny=<nx>                  Horizontal resolution [default: 256]
-    --aspect=<aspect>          Aspect ratio of problem [default: 2]
 
     --FF                       Fixed flux boundary conditions top/bottom (FF)
     --FT                       Fixed flux boundary conditions at bottom fixed temp at top (TT)
     --NS                       No-slip boundary conditions top/bottom
-    --MI                       Use electrically insulating (instead of conducting) bc
+    --MC                       Use electrically conducting (instead of insulating) bc
 
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
     
@@ -43,7 +44,6 @@ Options:
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
     --safety=<s>               CFL safety factor [default: 0.7]
-    --2.5D                     changes to 2.5D
 
     --noise_modes=<N>          Number of wavenumbers to use in creating noise; for resolution testing
     
@@ -67,38 +67,19 @@ from logic.output import initialize_magnetic_output
 from logic.checkpointing import Checkpoint
 from logic.ae_tools import BoussinesqAESolver
 from logic.extras import global_noise
-from logic.parsing import construct_BC_dict
+from logic.parsing import construct_BC_dict, construct_out_dir
 
 logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
 ### 1. Read in command-line args, set up data directory
-bc_dict = construct_BC_dict(args, default_T_BC='TT', default_u_BC='FS', default_M_BC='MC')
-
-data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-
 threeD = not(args['--2.5D'])
-if threeD:
-    data_dir+= "_3D"
-else:
-    data_dir+="_2.5D"
+bc_dict = construct_BC_dict(args, default_T_BC='TT', default_u_BC='FS', default_M_BC='MI')
 
-for k, val in bc_dict.items():
-    if val:
-        data_dir += '_{}'.format(k)
-
-data_dir += "_Q{}_Ra{}_Pr{}_a{}".format(args['--Chandra'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
-if args['--label'] is not None:
-    data_dir += "_{}".format(args['--label'])
-data_dir += '/'
-if MPI.COMM_WORLD.rank == 0:
-    if not os.path.exists('{:s}/'.format(data_dir)):
-        os.makedirs('{:s}/'.format(data_dir))
-    logdir = os.path.join(data_dir,'logs')
-    if not os.path.exists(logdir):
-        os.mkdir(logdir)
+if threeD: resolution_flags = ['nx', 'ny', 'nz']
+else:      resolution_flags = ['nx', 'nz']
+data_dir = construct_out_dir(args, bc_dict, base_flags=['2.5D', 'Q', 'Ra', 'Pr', 'Pm', 'a'], label_flags=['noise_modes'], resolution_flags=resolution_flags)
 logger.info("saving run in: {}".format(data_dir))
-
 
 run_time_buoy = args['--run_time_buoy']
 run_time_therm = args['--run_time_therm']
@@ -113,20 +94,12 @@ if mesh is not None:
     mesh = mesh.split(',')
     mesh = [int(mesh[0]), int(mesh[1])]
 
-
-
-
 ### 2. Simulation parameters
-Ra = float(args['--Rayleigh'])
-Pr = float(args['--Prandtl'])
-ek = float(args['--Ekman'])
-Q  = float(args['--Chandra'])
-Pm = float(args['--MagneticPrandtl'])
-aspect = float(args['--aspect'])
-#inv_Re_ff =(Pr/Ra)**(1./2.)
-#inv_Rem_ff = (inv_Re_ff / Pm)
-#JxB_pre   = ((Q*Pr)/(Ra*Pm))
-#inv_Pe_ff =(Ra*Pr)**(-1./2.)
+Ra = float(args['--Ra'])
+Pr = float(args['--Pr'])
+Q  = float(args['--Q'])
+Pm = float(args['--Pm'])
+aspect = float(args['--a'])
 
 nx = int(args['--nx'])
 ny = int(args['--ny'])
@@ -152,9 +125,6 @@ if threeD:
 
 problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
-#problem.parameters['P'] = P
-#problem.parameters['R'] = R
-#problem.parameters['E'] = ek
 problem.parameters['Ra'] = Ra
 problem.parameters['Pr'] = Pr
 problem.parameters['Pm'] = Pm

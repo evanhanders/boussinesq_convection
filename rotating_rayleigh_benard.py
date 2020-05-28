@@ -13,20 +13,22 @@ Usage:
     rotating_rayleigh_benard.py [options] 
 
 Options:
-    --Rayleigh=<Rayleigh>      Rayleigh number [default: 1e5]
-    --Prandtl=<Prandtl>        Prandtl number = nu/kappa [default: 1]
-    --Ekman=<Ekman>            Ekman number [default: 1e-2]
+    --Ra=<Rayleigh>            The Rayleigh number [default: 1e5]
+    --Pr=<Prandtl>             The Prandtl number [default: 1]
+    --Ek=<Ekman>               The Ekman number [default: 1e-2]
+    --a=<aspect>               Aspect ratio of problem [default: 2]
+
     --nz=<nz>                  Vertical resolution [default: 32]
     --nx=<nx>                  Horizontal resolution [default: 64]
     --ny=<nx>                  Horizontal resolution [default: 64]
-    --aspect=<aspect>          Aspect ratio of problem [default: 2]
+    --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
+    --safety=<s>               CFL safety factor [default: 0.5]
+    --RK443                    Use RK443 instead of RK222
 
     --FF                       Fixed flux boundary conditions top/bottom (default FT)
     --TT                       Fixed temperature boundary conditions top/bottom (default FT)
     --NS                       Free-slip/stress free boundary conditions (default Free-slip, FS)
-    --smart_ICs                Use smarter static initial conditions for flux boundaries
-
-    --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
+    --Nu_ICs                   Use Nu-based static initial conditions for flux boundaries
     
     --run_time_wall=<time>     Run time, in hours [default: 23.5]
     --run_time_buoy=<time>     Run time, in buoyancy times
@@ -43,14 +45,11 @@ Options:
     --verbose                  Do verbose output (e.g., sparsity patterns of arrays)
     --no_join                  If flagged, don't join files at end of run
     --root_dir=<dir>           Root directory for output [default: ./]
-    --safety=<s>               CFL safety factor [default: 0.5]
-    --RK443                    Use RK443 instead of RK222
-
 
     --stat_wait_time=<t>       Time to wait before taking rolling averages of quantities like Nu [default: 20]
     --stat_window=<t_w>        Max time to take rolling averages over [default: 100]
 
-    --ae                       Do accelerated evolution
+    --AE                       Do accelerated evolution
 
 """
 import logging
@@ -71,39 +70,14 @@ from logic.output import initialize_rotating_output
 from logic.checkpointing import Checkpoint
 from logic.ae_tools import BoussinesqAESolver
 from logic.extras import global_noise
-from logic.parsing import construct_BC_dict
+from logic.parsing import construct_BC_dict, construct_out_dir
 
 logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
 ### 1. Read in command-line args, set up data directory
 bc_dict = construct_BC_dict(args, default_T_BC='TT', default_u_BC='FS', default_M_BC=None)
-
-data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-
-for k, val in bc_dict.items():
-    if val:
-        data_dir += '_{}'.format(k)
-
-if args['--smart_ICs']:
-    data_dir += '_smart'
-
-if args['--ae']:
-    data_dir += '_AE'
-
-if args['--TT_to_FT'] is not None:
-    data_dir += '_TTtoFT'
-
-data_dir += "_Ek{}_Ra{}_Pr{}_a{}".format(args['--Ekman'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
-if args['--label'] is not None:
-    data_dir += "_{}".format(args['--label'])
-data_dir += '/'
-if MPI.COMM_WORLD.rank == 0:
-    if not os.path.exists('{:s}/'.format(data_dir)):
-        os.makedirs('{:s}/'.format(data_dir))
-    logdir = os.path.join(data_dir,'logs')
-    if not os.path.exists(logdir):
-        os.mkdir(logdir)
+data_dir = construct_out_dir(args, bc_dict, base_flags=['Ek', 'Ra', 'Pr', 'a'], label_flags=['Nu_ICs', 'AE', 'TT_to_FT'], resolution_flags=['nx', 'ny', 'nz'])
 logger.info("saving run in: {}".format(data_dir))
 
 
@@ -124,10 +98,10 @@ if mesh is not None:
 
 
 ### 2. Simulation parameters
-ra = float(args['--Rayleigh'])
-pr = float(args['--Prandtl'])
-ek = float(args['--Ekman'])
-aspect = float(args['--aspect'])
+ra = float(args['--Ra'])
+pr = float(args['--Pr'])
+ek = float(args['--Ek'])
+aspect = float(args['--a'])
 P = (ra*pr)**(-1./2)
 R = (ra/pr)**(-1./2)
 
@@ -252,7 +226,7 @@ if restart is None and TT_to_FT is None:
 
     A0 = 1e-6
 
-    if args['--smart_ICs']:
+    if args['--Nu_ICs']:
         from scipy.special import erf
         def one_to_zero(z, z0, delta):
             return -(1/2)*(erf( (z - z0) / delta ) - 1)
@@ -264,7 +238,7 @@ if restart is None and TT_to_FT is None:
         work_field  = domain.new_field()
         work_field.set_scales(domain.dealias)
 
-        if FT:
+        if bc_dict['FT']:
             #Solve out for estimated delta T / BL depth from Nu v Ra.
             Nu_law_const  = 0.138
             Nu_law_alpha  = 0.285
@@ -379,7 +353,7 @@ if rank == 0:
 
 
 ### 9. Initialize Accelerated Evolution, if appropriate
-if args['--ae']:
+if args['--AE']:
     kwargs = { 'first_ae_wait_time' : 30,
                'first_ae_avg_time' : 20,
                'first_ae_avg_thresh' : 1e-2 }
@@ -457,7 +431,7 @@ try:
                         avg_temp = np.sum((dt_vals*temp_vals)[:writes])/np.sum(dt_vals[:writes])
                 last_time = solver.sim_time
 
-        if args['--ae']:
+        if args['--AE']:
             ae_solver.loop_tasks()
                     
         if effective_iter % 10 == 0:
