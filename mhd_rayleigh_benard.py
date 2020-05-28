@@ -26,7 +26,7 @@ Options:
     --FF                       Fixed flux boundary conditions top/bottom (FF)
     --FT                       Fixed flux boundary conditions at bottom fixed temp at top (TT)
     --NS                       No-slip boundary conditions top/bottom
-    --conducting               changes to conducting bc
+    --MI                       Use electrically insulating (instead of conducting) bc
 
     --mesh=<mesh>              Processor mesh if distributing 3D run in 2D 
     
@@ -67,43 +67,15 @@ from logic.output import initialize_magnetic_output
 from logic.checkpointing import Checkpoint
 from logic.ae_tools import BoussinesqAESolver
 from logic.extras import global_noise
+from logic.parsing import construct_BC_dict
 
 logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
 ### 1. Read in command-line args, set up data directory
-FF = args['--FF']
-FT = args['--FT']
-if not (FF or FT):
-    TT = True
-else:
-    TT = False
-
-NS = args['--NS']
-if not NS:
-    FS = True
-else:
-    FS = False
+bc_dict = construct_BC_dict(args, default_T_BC='TT', default_u_BC='FS', default_M_BC='MC')
 
 data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
-
-if FF:
-    data_dir += '_FF'
-elif TT:
-    data_dir += '_TT'
-else:
-    data_dir += '_FT'
-
-#if args['--ae']:
-    #data_dir += '_AE'
-
-
-if FS:
-    data_dir += '_FS'
-else:
-    data_dir += '_NS'
-
-no_current = args['--conducting']
 
 threeD = not(args['--2.5D'])
 if threeD:
@@ -111,9 +83,9 @@ if threeD:
 else:
     data_dir+="_2.5D"
 
-if no_current:
-    data_dir += '_conducting'
-
+for k, val in bc_dict.items():
+    if val:
+        data_dir += '_{}'.format(k)
 
 data_dir += "_Q{}_Ra{}_Pr{}_a{}".format(args['--Chandra'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
@@ -273,12 +245,12 @@ problem.add_equation("T1_z - dz(T1) = 0")
 
 
 
-if FF:
+if bc_dict['FF']:
     logger.info("Thermal BC: fixed flux (full form)")
     problem.add_bc( "left(T1_z) = 0")
     problem.add_bc("right(T1_z) = 0")
 
-elif FT:
+elif bc_dict['FT']:
     logger.info("Thermal BC: fixed flux/fixed temperature")
     problem.add_bc( "left(T1_z) = 0")
     problem.add_bc("right(T1)  = 0")
@@ -287,7 +259,7 @@ else:
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
 
-if FS:
+if bc_dict['FS']:
     logger.info("Horizontal velocity BC: stress free/free-slip")
     problem.add_bc( "left(Oy) = 0")
     problem.add_bc("right(Oy) = 0")
@@ -314,7 +286,8 @@ else:
 problem.add_bc("right(p) = 0", condition=zero_cond)
 problem.add_bc("right(w) = 0", condition=else_cond)
     
-if no_current:
+if bc_dict['MC']:
+    #Electrically Conducting
     problem.add_bc(" left(Ax) = 0")
     problem.add_bc("right(Ax) = 0")
     problem.add_bc(" left(Ay) = 0")
@@ -325,6 +298,7 @@ if no_current:
     problem.add_bc("right(phi) = 0", condition=else_cond)
     problem.add_bc("right(Az) = 0",  condition=zero_cond)
 else:
+    #Electrically Insulating
     problem.add_bc(" left(Bx) = 0")
     problem.add_bc("right(Bx) = 0")
     problem.add_bc(" left(By) = 0")

@@ -71,32 +71,19 @@ from logic.output import initialize_rotating_output
 from logic.checkpointing import Checkpoint
 from logic.ae_tools import BoussinesqAESolver
 from logic.extras import global_noise
+from logic.parsing import construct_BC_dict
 
 logger = logging.getLogger(__name__)
 args = docopt(__doc__)
 
 ### 1. Read in command-line args, set up data directory
-FF = args['--FF']
-TT = args['--TT']
-if not (FF or TT):
-    FT = True
-else:
-    FT = False
-
-NS = args['--NS']
-if not NS:
-    FS = True
-else:
-    FS = False
+bc_dict = construct_BC_dict(args, default_T_BC='TT', default_u_BC='FS', default_M_BC=None)
 
 data_dir = args['--root_dir'] + '/' + sys.argv[0].split('.py')[0]
 
-if FF:
-    data_dir += '_FF'
-elif TT:
-    data_dir += '_TT'
-else:
-    data_dir += '_FT'
+for k, val in bc_dict.items():
+    if val:
+        data_dir += '_{}'.format(k)
 
 if args['--smart_ICs']:
     data_dir += '_smart'
@@ -106,11 +93,6 @@ if args['--ae']:
 
 if args['--TT_to_FT'] is not None:
     data_dir += '_TTtoFT'
-
-if FS:
-    data_dir += '_FS'
-else:
-    data_dir += '_NS'
 
 data_dir += "_Ek{}_Ra{}_Pr{}_a{}".format(args['--Ekman'], args['--Rayleigh'], args['--Prandtl'], args['--aspect'])
 if args['--label'] is not None:
@@ -166,8 +148,8 @@ domain = de.Domain(bases, grid_dtype=np.float64, mesh=mesh)
 variables = ['T1', 'T1_z', 'p', 'u', 'v', 'w', 'Ox', 'Oy', 'Oz']
 problem = de.IVP(domain, variables=variables, ncc_cutoff=1e-10)
 
-problem.parameters['P'] = P
-problem.parameters['R'] = R
+problem.parameters['inv_Pe_ff'] = P
+problem.parameters['inv_Re_ff'] = R
 problem.parameters['E'] = ek
 problem.parameters['Lx'] = problem.parameters['Ly'] = aspect
 problem.parameters['Lz'] = 1
@@ -183,36 +165,36 @@ problem.substitutions['plane_std(A)'] = 'sqrt(plane_avg((A - plane_avg(A))**2))'
 problem.substitutions['enstrophy'] = '(Ox**2 + Oy**2 + Oz**2)'
 
 problem.substitutions['enth_flux'] = '(w*(T1+T0))'
-problem.substitutions['cond_flux'] = '(-P*(T1_z+T0_z))'
+problem.substitutions['cond_flux'] = '(-inv_Pe_ff*(T1_z+T0_z))'
 problem.substitutions['tot_flux'] = '(cond_flux+enth_flux)'
 problem.substitutions['momentum_rhs_z'] = '(u*Oy - v*Ox)'
 problem.substitutions['Nu'] = '((enth_flux + cond_flux)/vol_avg(cond_flux))'
 problem.substitutions['delta_T1'] = '(left(T1)-right(T1))'
 problem.substitutions['vel_rms'] = 'sqrt(u**2 + v**2 + w**2)'
 
-problem.substitutions['Re'] = '(vel_rms / R)'
-problem.substitutions['Pe'] = '(vel_rms / P)'
-problem.substitutions['Ro'] = 'sqrt(enstrophy)/(R/E)'
-problem.substitutions['true_Ro'] = 'sqrt((v*Oz-w*Oy)**2+(w*Ox-u*Oz)**2+(u*Oy-v*Ox)**2)/(R/E*sqrt(v**2+u**2))'
+problem.substitutions['Re'] = '(vel_rms / inv_Re_ff)'
+problem.substitutions['Pe'] = '(vel_rms / inv_Pe_ff)'
+problem.substitutions['Ro'] = 'sqrt(enstrophy)/(inv_Re_ff/E)'
+problem.substitutions['true_Ro'] = 'sqrt((v*Oz-w*Oy)**2+(w*Ox-u*Oz)**2+(u*Oy-v*Ox)**2)/(inv_Re_ff/E*sqrt(v**2+u**2))'
 
 
 ### 4.Setup equations and Boundary Conditions
 problem.add_equation("dx(u) + dy(v) + dz(w) = 0")
-problem.add_equation("dt(T1) - P*Lap(T1, T1_z) + w*T0_z           = -UdotGrad(T1, T1_z)")
-problem.add_equation("dt(u)  + R*(dy(Oz) - dz(Oy) - v/E)  + dx(p)       =  v*Oz - w*Oy ")
-problem.add_equation("dt(v)  + R*(dz(Ox) - dx(Oz) + u/E)  + dy(p)       =  w*Ox - u*Oz ")
-problem.add_equation("dt(w)  + R*(dx(Oy) - dy(Ox)      )  + dz(p) - T1  =  u*Oy - v*Ox ")
+problem.add_equation("dt(T1) - inv_Pe_ff*Lap(T1, T1_z) + w*T0_z           = -UdotGrad(T1, T1_z)")
+problem.add_equation("dt(u)  + inv_Re_ff*(dy(Oz) - dz(Oy) - v/E)  + dx(p)       =  v*Oz - w*Oy ")
+problem.add_equation("dt(v)  + inv_Re_ff*(dz(Ox) - dx(Oz) + u/E)  + dy(p)       =  w*Ox - u*Oz ")
+problem.add_equation("dt(w)  + inv_Re_ff*(dx(Oy) - dy(Ox)      )  + dz(p) - T1  =  u*Oy - v*Ox ")
 problem.add_equation("T1_z - dz(T1) = 0")
 problem.add_equation("Ox - dy(w) + dz(v) = 0")
 problem.add_equation("Oy - dz(u) + dx(w) = 0")
 problem.add_equation("Oz - dx(v) + dy(u) = 0")
 
 
-if FF:
+if bc_dict['FF']:
     logger.info("Thermal BC: fixed flux (full form)")
     problem.add_bc( "left(T1_z) = 0")
     problem.add_bc("right(T1_z) = 0")
-elif TT:
+elif bc_dict['TT']:
     logger.info("Thermal BC: fixed temperature (T1)")
     problem.add_bc( "left(T1) = 0")
     problem.add_bc("right(T1) = 0")
@@ -221,7 +203,7 @@ else:
     problem.add_bc("left(T1_z) = 0")
     problem.add_bc("right(T1)  = 0")
 
-if FS:
+if bc_dict['FS']:
     logger.info("Horizontal velocity BC: stress free/free-slip")
     problem.add_bc("left(Oy) = 0")
     problem.add_bc("right(Oy) = 0")
