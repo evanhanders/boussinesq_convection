@@ -17,14 +17,13 @@ Options:
     --row_inch=<in>                     Number of inches / row [default: 2]
 
     --fig_type=<fig_type>               Type of figure to plot
-                                            1 - T, enstrophy
-                                            2 - T, enstrophy, Bz
+                                            1 - T - horiz_avg(T), w
                                         [default: 1]
-                                        
 """
+import numpy as np
 from docopt import docopt
 args = docopt(__doc__)
-from plot_logic.slices import SlicePlotter
+from plotpal.slices import SlicePlotter
 import logging
 logger = logging.getLogger(__name__)
 
@@ -41,20 +40,12 @@ if root_dir is None:
     sys.exit()
 fig_name   = args['--fig_name']
 
-plotter = SlicePlotter(root_dir, file_dir='slices', fig_name=fig_name, start_file=start_file, n_files=n_files)
-convergence_plotter = SlicePlotter(root_dir, file_dir='slices', fig_name=fig_name, start_file=start_file, n_files=n_files)
+plotter = SlicePlotter(root_dir, file_dir='slices', out_name=fig_name, start_file=start_file, n_files=n_files)
 
-plotter_kwargs = { 'col_in' : int(args['--col_inch']), 'row_in' : int(args['--row_inch']) }
-if int(args['--fig_type']) == 1:
-    plotter.setup_grid(2, 1, **plotter_kwargs)
-    fnames = [  (('T',), {'remove_x_mean' : True}), 
-                (('enstrophy',), {'cmap':'Purples_r', 'pos_def' : True})    ]
-elif int(args['--fig_type']) == 2:
-    plotter.setup_grid(3, 1, **plotter_kwargs)
-    fnames = [  (('T',), {'remove_x_mean' : True}),
-            (('enstrophy',), {'cmap':'Purples_r', 'pos_def' : True}), (('Bz',), {'remove_x_mean' : False})    ]
-
-for tup in fnames:
-    plotter.add_colormesh(*tup[0], **tup[1])
+plotter_kwargs = { 'col_inch' : int(args['--col_inch']), 'row_inch' : int(args['--row_inch'])}
+plotter.setup_grid(num_rows=1, num_cols=2, **plotter_kwargs)
+bases_kwargs = { 'x_basis' : 'x', 'y_basis' : 'z' }
+plotter.add_colormesh('b', remove_x_mean=True, label='b - horiz_avg(b)', **bases_kwargs)
+plotter.add_colormesh('uz', cmap='PuOr_r', **bases_kwargs)
 
 plotter.plot_colormeshes(start_fig=start_fig, dpi=int(args['--dpi']))

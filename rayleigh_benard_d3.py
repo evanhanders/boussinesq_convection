@@ -23,35 +23,48 @@ Usage:
     rayleigh_benard_d3.py [options] 
 
 Options:
-    --Ra=<Rayleigh>            The Rayleigh number [default: 5e3]
-    --Pr=<Prandtl>             The Prandtl number  [default: 1e-1]
-    --a=<aspect>               The aspect ratio    [default: 2]
+    --Ra=<Rayleigh>            The Rayleigh number [default: 3e3]
+    --Pr=<Prandtl>             The Prandtl number  [default: 1e-2]
+    --a=<aspect>               The aspect ratio    [default: 4]
 
     --nz=<nz>                  Vertical resolution [default: 32]
     --nx=<nx>                  Horizontal resolution [default: 64]
+
+    --run_time_buoy=<time>     Run time, in buoyancy times [default: 5e2]
+
+    --root_dir=<dir>           Root directory for output [default: ./]
+    --label=<label>            Optional additional case name label
 """
 
+from docopt import docopt
 import numpy as np
 import time
 import dedalus.public as d3
 import logging
 logger = logging.getLogger(__name__)
 
+from logic.parsing import construct_out_dir
+
 # TODO: maybe fix plotting to directly handle vectors
 # TODO: optimize and match d2 resolution
 # TODO: get unit vectors from coords?
 
+args = docopt(__doc__)
 
 # Parameters
 Lx, Lz = float(args['--a']), 1
 Nx, Nz = int(args['--nx']), int(args['--nz'])
 Rayleigh = float(args['--Ra'])
-Prandtl = float(args['--Pr'])
+Prandtl = Pr = float(args['--Pr'])
 dealias = 3/2
-stop_sim_time = 30
+stop_sim_time = float(args['--run_time_buoy'])
 timestepper = d3.SBDF2
 max_timestep = 0.1
 dtype = np.float64
+
+
+data_dir = construct_out_dir(args, {}, base_flags=['Ra', 'Pr', 'a'], label_flags=[], resolution_flags=['nx', 'nz'])
+logger.info('saving outputs to {}'.format(data_dir))
 
 # Bases
 coords = d3.CartesianCoordinates('x', 'z')
@@ -109,7 +122,7 @@ b['g'] *= z * (Lz - z) # Damp noise at walls
 b['g'] += Lz - z # Add linear background
 
 # Analysis
-snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=0.5, max_writes=50)
+snapshots = solver.evaluator.add_file_handler('{}/slices'.format(data_dir), sim_dt=0.5, max_writes=50)
 snapshots.add_task(p)
 snapshots.add_task(b)
 snapshots.add_task(d3.dot(u,ex), name='ux')
@@ -133,7 +146,7 @@ try:
         solver.step(timestep)
         if (solver.iteration-1) % 10 == 0:
             max_Re = flow.max('Re')
-            logger.info('Iteration=%i, Time=%e, dt=%e, max(Re)=%f' %(solver.iteration, solver.sim_time, timestep, max_Re))
+            logger.info('Iteration=%i, Time=%e, dt=%e, max(Re)/Pe=%f/%f' %(solver.iteration, solver.sim_time, timestep, max_Re, max_Re*Pr))
 except:
     logger.error('Exception raised, triggering end of main loop.')
     raise
