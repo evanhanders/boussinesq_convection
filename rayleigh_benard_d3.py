@@ -19,9 +19,16 @@ one tau term each on auxiliary first-order gradient variables and the others in
 the PDE, and lifting them all to the first derivative basis. This formulation puts
 a tau term in the divergence constraint, as required for this geometry.
 
-To run and plot using e.g. 4 processes:
-    $ mpiexec -n 4 python3 rayleigh_benard.py
-    $ mpiexec -n 4 python3 plot_snapshots.py snapshots/*.h5
+Usage:
+    rayleigh_benard_d3.py [options] 
+
+Options:
+    --Ra=<Rayleigh>            The Rayleigh number [default: 5e3]
+    --Pr=<Prandtl>             The Prandtl number  [default: 1e-1]
+    --a=<aspect>               The aspect ratio    [default: 2]
+
+    --nz=<nz>                  Vertical resolution [default: 32]
+    --nx=<nx>                  Horizontal resolution [default: 64]
 """
 
 import numpy as np
@@ -36,13 +43,13 @@ logger = logging.getLogger(__name__)
 
 
 # Parameters
-Lx, Lz = 4, 1
-Nx, Nz = 64, 32
-Rayleigh = 1e6
-Prandtl = 1
+Lx, Lz = float(args['--a']), 1
+Nx, Nz = int(args['--nx']), int(args['--nz'])
+Rayleigh = float(args['--Ra'])
+Prandtl = float(args['--Pr'])
 dealias = 3/2
 stop_sim_time = 30
-timestepper = d3.RK222
+timestepper = d3.SBDF2
 max_timestep = 0.1
 dtype = np.float64
 
@@ -102,14 +109,14 @@ b['g'] *= z * (Lz - z) # Damp noise at walls
 b['g'] += Lz - z # Add linear background
 
 # Analysis
-snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=0.1, max_writes=50)
+snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=0.5, max_writes=50)
 snapshots.add_task(p)
 snapshots.add_task(b)
 snapshots.add_task(d3.dot(u,ex), name='ux')
 snapshots.add_task(d3.dot(u,ez), name='uz')
 
 # CFL
-CFL = d3.CFL(solver, initial_dt=max_timestep, cadence=10, safety=0.5, threshold=0.1,
+CFL = d3.CFL(solver, initial_dt=max_timestep, cadence=10, safety=0.2, threshold=0.1,
              max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocity(u)
 
