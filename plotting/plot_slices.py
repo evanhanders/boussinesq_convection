@@ -45,7 +45,7 @@ plotter = SlicePlotter(root_dir, file_dir='slices', out_name=fig_name, start_fil
 plotter_kwargs = { 'col_inch' : int(args['--col_inch']), 'row_inch' : int(args['--row_inch'])}
 plotter.setup_grid(num_rows=1, num_cols=2, **plotter_kwargs)
 bases_kwargs = { 'x_basis' : 'x', 'y_basis' : 'z' }
-plotter.add_colormesh('b', remove_x_mean=True, label='b - horiz_avg(b)', **bases_kwargs)
-plotter.add_colormesh('uz', cmap='PuOr_r', **bases_kwargs)
+plotter.add_cartesian_colormesh('b', remove_x_mean=True, label='b - horiz_avg(b)', **bases_kwargs)
+plotter.add_cartesian_colormesh('uz', cmap='PuOr_r', **bases_kwargs)
 
 plotter.plot_colormeshes(start_fig=start_fig, dpi=int(args['--dpi']))

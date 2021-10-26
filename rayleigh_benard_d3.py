@@ -31,6 +31,7 @@ Options:
     --nx=<nx>                  Horizontal resolution [default: 64]
 
     --run_time_buoy=<time>     Run time, in buoyancy times [default: 5e2]
+    --wall_time=<hrs>          Run time, in hours [default: 23.5]
 
     --root_dir=<dir>           Root directory for output [default: ./]
     --label=<label>            Optional additional case name label
@@ -58,8 +59,9 @@ Rayleigh = float(args['--Ra'])
 Prandtl = Pr = float(args['--Pr'])
 dealias = 3/2
 stop_sim_time = float(args['--run_time_buoy'])
+stop_wall_time = float(args['--wall_time'])*60*60
 timestepper = d3.SBDF2
-max_timestep = 0.1
+max_timestep = 0.25
 dtype = np.float64
 
 
@@ -114,6 +116,7 @@ problem.add_equation("p(z=Lz) = 0", condition="nx == 0") # Pressure gauge
 # Solver
 solver = problem.build_solver(timestepper)
 solver.stop_sim_time = stop_sim_time
+solver.stop_wall_time = stop_wall_time
 
 # Initial conditions
 zb, zt = zbasis.bounds
@@ -121,12 +124,40 @@ b.fill_random('g', seed=42, distribution='normal', scale=1e-3) # Random noise
 b['g'] *= z * (Lz - z) # Damp noise at walls
 b['g'] += Lz - z # Add linear background
 
+plane_avg = lambda A: d3.Integrate(A/Lx, coords['x'])
+vol_avg = lambda A: d3.Integrate(d3.Integrate(A/Lx/Lz, coords['z']),coords['x'])
+dx = lambda A: d3.Differentiate(A, coords['x'])
+dz = lambda A: d3.Differentiate(A, coords['z'])
+ω = dz(d3.dot(u, ex)) - dx(d3.dot(u, ez))
+enstrophy = ω**2
+
+Fconv = b*u
+Fcond = -kappa*d3.grad(b)
+
 # Analysis
 snapshots = solver.evaluator.add_file_handler('{}/slices'.format(data_dir), sim_dt=0.5, max_writes=50)
 snapshots.add_task(p)
 snapshots.add_task(b)
 snapshots.add_task(d3.dot(u,ex), name='ux')
 snapshots.add_task(d3.dot(u,ez), name='uz')
+
+profiles = solver.evaluator.add_file_handler('{}/profiles'.format(data_dir), sim_dt=0.5, max_writes=50)
+profiles.add_task(plane_avg(b), name='b')
+profiles.add_task(plane_avg(d3.dot(u,u)/2), name='KE')
+profiles.add_task(plane_avg(enstrophy), name='enstrophy')
+profiles.add_task(plane_avg(d3.dot(ez, Fcond)), name='Fcond')
+profiles.add_task(plane_avg(d3.dot(ez, Fconv)), name='Fconv')
+profiles.add_task(plane_avg(d3.dot(ez, Fconv+Fcond)), name='Ftot')
+profiles.add_task(plane_avg(d3.dot(ez, Fconv+Fcond))/vol_avg(d3.dot(ez, Fcond)), name='Nu')
+
+scalars = solver.evaluator.add_file_handler('{}/scalars'.format(data_dir), sim_dt=0.5, max_writes=50)
+scalars.add_task(vol_avg(d3.dot(u,u)/2), name='KE')
+scalars.add_task(np.sqrt(vol_avg(d3.dot(u,u)))/nu, name='Re')
+scalars.add_task(np.sqrt(vol_avg(d3.dot(u,u)))/kappa, name='Pe')
+scalars.add_task(vol_avg(enstrophy), name='enstrophy')
+scalars.add_task(vol_avg(d3.dot(ez, Fcond)), name='Fcond')
+scalars.add_task(vol_avg(d3.dot(ez, Fconv)), name='Fconv')
+scalars.add_task(1 + vol_avg(d3.dot(ez, Fconv))/vol_avg(d3.dot(ez, Fcond)), name='Nu')
 
 # CFL
 CFL = d3.CFL(solver, initial_dt=max_timestep, cadence=10, safety=0.2, threshold=0.1,
